@@ -56,8 +56,8 @@ Keychain も本番経路では触らない（Cookie 正規化と JSON マッピ�
 `GET https://cursor.com/api/usage-summary`（非公式）。認証は
 `WorkosCursorSessionToken` Cookie。
 
-ホストは `LSUIElement` のメニューバー常駐。サンドボックスあり。App Group は Team ID 付き。
-Cursor の `Application Support` は temporary-exception で read-only。
+ホストはメニューバー常駐（サンドボックスなし。Cursor の `state.vscdb` を読むため）。
+ウィジェット拡張はサンドボックスあり。App Group は Team ID 付き。
 
 ウィジェット拡張の `Provider.buildEntry()` から通信してはいけない。スナップショットは
 App が App Group に書いたものを読むだけ。

@@ -34,6 +34,9 @@ struct CursorProvider: UsageProvider {
 
     // MARK: - Network
 
+    private static let browserUA =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
     static func fetchUsageSummary(cookie: String) async throws -> UsageSummaryResponse {
         var request = URLRequest(url: URL(string: "https://cursor.com/api/usage-summary")!)
         request.httpMethod = "GET"
@@ -41,6 +44,7 @@ struct CursorProvider: UsageProvider {
         request.setValue("https://cursor.com", forHTTPHeaderField: "Origin")
         request.setValue("https://cursor.com/dashboard?tab=usage", forHTTPHeaderField: "Referer")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(browserUA, forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -66,6 +70,7 @@ struct CursorProvider: UsageProvider {
         request.setValue("WorkosCursorSessionToken=\(cookie)", forHTTPHeaderField: "Cookie")
         request.setValue("https://cursor.com", forHTTPHeaderField: "Origin")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(browserUA, forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CursorAPIError.unauthorized
@@ -82,6 +87,7 @@ struct CursorProvider: UsageProvider {
         request.setValue("https://cursor.com/dashboard?tab=usage", forHTTPHeaderField: "Referer")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(browserUA, forHTTPHeaderField: "User-Agent")
         request.httpBody = Data("{}".utf8)
 
         let (data, response) = try await URLSession.shared.data(for: request)

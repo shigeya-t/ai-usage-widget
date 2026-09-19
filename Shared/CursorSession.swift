@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import SQLite3
+import Darwin
 
 enum CursorSessionError: LocalizedError {
     case databaseMissing
@@ -26,8 +27,17 @@ enum CursorSession {
     private static let keychainAccount = "WorkosCursorSessionToken"
     private static let accessTokenKey = "cursorAuth/accessToken"
 
+    /// サンドボックスでは `homeDirectoryForCurrentUser` がコンテナ内になる。
+    /// temporary-exception の実ホーム相対パスを使うには passwd のホームが必要。
+    static var realHomeDirectory: URL {
+        if let pw = getpwuid(getuid()), let dir = pw.pointee.pw_dir {
+            return URL(fileURLWithPath: String(cString: dir), isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+    }
+
     static var defaultStateDBURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        realHomeDirectory
             .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
     }
 
@@ -67,9 +77,25 @@ enum CursorSession {
         guard let expiry = jwtExpiry(jwt), expiry.timeIntervalSinceNow > 60 else {
             throw CursorSessionError.tokenExpired
         }
-        let sub = try jwtSubject(jwt)
-        let cookie = "\(sub)%3A%3A\(jwt)"
-        return cookie
+        // Cursor の JWT `sub` は `auth0|user_…`。Workos cookie は `user_…%3A%3Ajwt`。
+        let userID = try cookieUserID(fromJWTSubject: jwtSubject(jwt))
+        return "\(userID)%3A%3A\(jwt)"
+    }
+
+    /// `auth0|user_01…` / `auth0%7Cuser_01…` → `user_01…`。パイプ無しならそのまま。
+    static func cookieUserID(fromJWTSubject sub: String) throws -> String {
+        let decoded = sub
+            .replacingOccurrences(of: "%7C", with: "|")
+            .replacingOccurrences(of: "%7c", with: "|")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !decoded.isEmpty else { throw CursorSessionError.invalidToken }
+        if let pipe = decoded.firstIndex(of: "|") {
+            let tail = String(decoded[decoded.index(after: pipe)...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !tail.isEmpty else { throw CursorSessionError.invalidToken }
+            return tail
+        }
+        return decoded
     }
 
     static func readAccessToken(from dbURL: URL) throws -> String {
@@ -77,19 +103,43 @@ enum CursorSession {
             throw CursorSessionError.databaseMissing
         }
 
-        var db: OpaquePointer?
-        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
-        let openResult: Int32
-        // WAL が無い idle なファイルでは immutable を試す
-        let uri = dbURL.path.hasPrefix("/") ? "file:\(dbURL.path)?immutable=1" : dbURL.path
-        if sqlite3_open_v2(uri, &db, flags, nil) == SQLITE_OK {
-            openResult = SQLITE_OK
-        } else {
-            sqlite3_close(db)
-            db = nil
-            openResult = sqlite3_open_v2(dbURL.path, &db, flags, nil)
+        // サンドボックスの temporary-exception は read-only。
+        // WAL 付き DB を通常の READONLY で開くと -shm へ書けず CANTOPEN になることがある。
+        // immutable=1（＋ URI のスペースを正しくエンコード）でメイン DB だけ読む。
+        if let token = try? readAccessTokenOpening(dbURL: dbURL, immutable: true) {
+            return token
         }
+        if let token = try? readAccessTokenOpening(dbURL: dbURL, immutable: false) {
+            return token
+        }
+        // 最後の手段: コンテナ内へコピーしてから開く（WAL を無視）
+        return try readAccessTokenViaTempCopy(dbURL: dbURL)
+    }
+
+    private static func readAccessTokenViaTempCopy(dbURL: URL) throws -> String {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aiusage-cursor-state-\(UUID().uuidString).vscdb")
+        do {
+            try FileManager.default.copyItem(at: dbURL, to: tmp)
+        } catch {
+            usageLogger.error("session db copy failed: \(error.localizedDescription, privacy: .public)")
+            throw CursorSessionError.databaseOpenFailed
+        }
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        return try readAccessTokenOpening(dbURL: tmp, immutable: true)
+    }
+
+    private static func readAccessTokenOpening(dbURL: URL, immutable: Bool) throws -> String {
+        var db: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_URI
+        let uri = sqliteURI(for: dbURL, immutable: immutable)
+        let openResult = sqlite3_open_v2(uri, &db, flags, nil)
         guard openResult == SQLITE_OK, let db else {
+            let msg = db.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "open rc=\(openResult)"
+            sqlite3_close(db)
+            usageLogger.debug(
+                "session db open failed immutable=\(immutable) msg=\(msg, privacy: .public)"
+            )
             throw CursorSessionError.databaseOpenFailed
         }
         defer { sqlite3_close(db) }
@@ -97,6 +147,8 @@ enum CursorSession {
         let sql = "SELECT value FROM ItemTable WHERE key = ? LIMIT 1;"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+            let msg = String(cString: sqlite3_errmsg(db))
+            usageLogger.debug("session db prepare failed: \(msg, privacy: .public)")
             throw CursorSessionError.databaseOpenFailed
         }
         defer { sqlite3_finalize(statement) }
@@ -131,6 +183,17 @@ enum CursorSession {
         throw CursorSessionError.tokenMissing
     }
 
+    /// SQLite URI。パス内スペースなどを percent-encode する。
+    private static func sqliteURI(for dbURL: URL, immutable: Bool) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "?#")
+        let encodedPath = dbURL.path.addingPercentEncoding(withAllowedCharacters: allowed) ?? dbURL.path
+        if immutable {
+            return "file://\(encodedPath)?mode=ro&immutable=1"
+        }
+        return "file://\(encodedPath)?mode=ro"
+    }
+
     // MARK: - Cookie parsing
 
     static func normalizeCookieValue(_ raw: String) -> String {
@@ -149,11 +212,22 @@ enum CursorSession {
         if value.contains("::"), !value.contains("%3A%3A") {
             value = value.replacingOccurrences(of: "::", with: "%3A%3A")
         }
-        // bare JWT: try to attach sub
+        // bare JWT: try to attach cookie user id (IdP prefix を落とす)
         if !value.contains("%3A%3A"), value.split(separator: ".").count == 3,
-           let sub = try? jwtSubject(value)
+           let sub = try? jwtSubject(value),
+           let userID = try? cookieUserID(fromJWTSubject: sub)
         {
-            value = "\(sub)%3A%3A\(value)"
+            value = "\(userID)%3A%3A\(value)"
+        }
+        // 手動貼り付けで `auth0|user_…%3A%3A…` が来ても正規化
+        if value.contains("%3A%3A") {
+            let parts = value.components(separatedBy: "%3A%3A")
+            if parts.count == 2,
+               let userID = try? cookieUserID(fromJWTSubject: parts[0]),
+               !parts[1].isEmpty
+            {
+                value = "\(userID)%3A%3A\(parts[1])"
+            }
         }
         return value
     }

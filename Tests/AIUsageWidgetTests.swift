@@ -90,6 +90,51 @@ final class CursorSessionTests: XCTestCase {
         XCTAssertEqual(parts.jwt, jwt)
     }
 
+    func testNormalizeBareJWTStripsAuth0Prefix() throws {
+        let payloadJSON = #"{"sub":"auth0|user_01TEST","exp":9999999999}"#
+        let payload = Data(payloadJSON.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let jwt = "eyJhbGciOiJub25lIn0.\(payload).sig"
+        let cookie = CursorSession.normalizeCookieValue(jwt)
+        XCTAssertEqual(cookie, "user_01TEST%3A%3A\(jwt)")
+    }
+
+    func testCookieUserIDFromAuth0Subject() throws {
+        XCTAssertEqual(
+            try CursorSession.cookieUserID(fromJWTSubject: "auth0|user_01ABC"),
+            "user_01ABC"
+        )
+        XCTAssertEqual(
+            try CursorSession.cookieUserID(fromJWTSubject: "auth0%7Cuser_01ABC"),
+            "user_01ABC"
+        )
+        XCTAssertEqual(
+            try CursorSession.cookieUserID(fromJWTSubject: "user_01ABC"),
+            "user_01ABC"
+        )
+    }
+
+    func testDefaultStateDBURLUsesRealHomeNotContainer() {
+        let path = CursorSession.defaultStateDBURL.path
+        XCTAssertFalse(path.contains("/Library/Containers/"), path)
+        XCTAssertTrue(path.hasSuffix("Library/Application Support/Cursor/User/globalStorage/state.vscdb"), path)
+        XCTAssertEqual(
+            CursorSession.defaultStateDBURL.deletingLastPathComponent().path,
+            CursorSession.realHomeDirectory
+                .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage")
+                .path
+        )
+    }
+
+    func testNormalizeStripsAuth0FromPastedCookie() throws {
+        let cookie = CursorSession.normalizeCookieValue(
+            "auth0|user_01ABC%3A%3AeyJhbGciOiJub25lIn0.e30.sig"
+        )
+        XCTAssertEqual(cookie, "user_01ABC%3A%3AeyJhbGciOiJub25lIn0.e30.sig")
+    }
+
     func testNormalizeDecodedDoubleColon() throws {
         let cookie = CursorSession.normalizeCookieValue("user_01ABC::eyJhbGciOiJub25lIn0.e30.sig")
         XCTAssertEqual(cookie, "user_01ABC%3A%3AeyJhbGciOiJub25lIn0.e30.sig")
