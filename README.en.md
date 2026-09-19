@@ -36,7 +36,7 @@ the desktop, without opening settings every time.
 - macOS 14 or later
 - Xcode 15 or later
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
-- A Cursor.app login, or a `WorkosCursorSessionToken` cookie from the browser
+- A Cursor.app login (recommended). A browser cookie is only a fallback
 
 ## Build and install
 
@@ -65,18 +65,29 @@ Personal Plan & Usage is not available through the official Admin API.
 This app calls the same unofficial endpoint the dashboard uses:
 `GET https://cursor.com/api/usage-summary`.
 
+**Signing in to Cursor.app is usually enough.** The host builds a session from the
+local `state.vscdb` (`cursorAuth/accessToken`).
+
 Session resolution order:
 
-1. Manually saved `WorkosCursorSessionToken` in Keychain
-2. Cursor.app `state.vscdb` (`cursorAuth/accessToken`)
+1. Manually saved cookie in Keychain (if present, preferred)
+2. Cursor.app `state.vscdb`
 
-To paste a cookie manually:
+Paste a cookie only when automatic resolution fails:
 
 1. Open https://cursor.com/dashboard?tab=usage
-2. DevTools → Application → Cookies → copy the **Value** of `WorkosCursorSessionToken`
+2. DevTools → Application → Cookies → copy the **Value** of `WorkosCursorSessionToken`  
+   (if that name is missing or only alternate names appear, this path may not work)
 3. Paste only the value into the menu bar field (the cookie name is shown as a fixed label)
 
 Session cookies / JWTs are never logged. Only usage snapshots are shared with the widget.
+
+### Permissions
+
+- **Host (menu bar):** no App Sandbox, so it can read Cursor’s local session database
+- **Widget extension:** sandboxed; no networking; displays App Group snapshots only
+- Intended for personal, private use. Shipping with a mandatory host sandbox would need
+  a different design (manual cookies only, or a security-scoped bookmark to the DB file)
 
 ## How refresh works
 

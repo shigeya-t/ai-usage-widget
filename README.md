@@ -37,7 +37,7 @@ Cursor のダッシュボードには Plan & Usage がありますが、残り�
 - macOS 14 以降
 - Xcode 15 以降
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）
-- Cursor.app へのログイン、またはブラウザの `WorkosCursorSessionToken` Cookie
+- Cursor.app へのログイン（推奨）。失敗時のフォールバックとしてブラウザ Cookie も可
 
 ## ビルドと導入
 
@@ -64,18 +64,29 @@ AppIntents が解決できず、ウィジェットがプレースホルダのま
 個人の Plan & Usage は公式 Admin API では取れません。このアプリはダッシュボードが
 使う非公式エンドポイント `GET https://cursor.com/api/usage-summary` を呼び出します。
 
+**通常は Cursor.app にログインしていれば足ります。** ローカルの
+`state.vscdb`（`cursorAuth/accessToken`）からセッションを組み立てます。
+
 セッションの解決順:
 
-1. メニューバーに保存した `WorkosCursorSessionToken`（Keychain）
-2. Cursor.app の `state.vscdb`（`cursorAuth/accessToken`）
+1. メニューバーに保存した Cookie（Keychain）※あれば優先
+2. Cursor.app の `state.vscdb`
 
-Cookie を手動で入れる場合:
+自動取得に失敗したときだけ、Cookie を手動で入れてください:
 
 1. https://cursor.com/dashboard?tab=usage を開く
-2. DevTools → Application → Cookies → `WorkosCursorSessionToken` の **Value** をコピー
+2. DevTools → Application → Cookies → `WorkosCursorSessionToken` の **Value** をコピー  
+   （名前が無い・別名だけのときは、この経路は使えないことがあります）
 3. メニューバーの入力欄（名前は固定表示）に値だけ貼り付けて保存
 
 セッション Cookie / JWT はログに出しません。ウィジェットへ渡すのは使用量のスナップショットだけです。
+
+### 権限まわり
+
+- **ホスト（メニューバー）**: App Sandbox なし。Cursor のローカルセッション DB を読むためです
+- **ウィジェット拡張**: サンドボックスあり。通信せず App Group のスナップショットだけ表示します
+- 個人の私的利用向けです。配布用にサンドボックスを必須にする場合は、Cookie 手動運用や
+  ファイル選択（security-scoped bookmark）など別設計が必要です
 
 ## 更新のしくみ
 

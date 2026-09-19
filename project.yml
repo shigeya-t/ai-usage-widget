@@ -57,12 +57,12 @@ targets:
     entitlements:
       path: App/AIUsageWidget.entitlements
       properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.network.client: true
+        # ホストは Cursor の state.vscdb を読む必要がある。
+        # temporary-exception だけでは open が authorization denied になる環境があるため、
+        # ホストのみサンドボックスなし。ウィジェット拡張はサンドボックスのまま。
+        com.apple.security.app-sandbox: false
         com.apple.security.application-groups:
           - $(APP_GROUP_ID)
-        com.apple.security.temporary-exception.files.home-relative.read-only:
-          - Library/Application Support/Cursor/
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.shigeya.AIUsageWidget

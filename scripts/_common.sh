@@ -53,12 +53,16 @@ DEVELOPMENT_TEAM = $team
 EOF
 }
 
+# 配置用は Release（Debug の *.debug.dylib stub は Launch Services で欠けやすい）
+CONFIGURATION="${CONFIGURATION:-Release}"
+
 run_xcodebuild() {
   write_team_xcconfig
   local team="$DEVELOPMENT_TEAM_RESOLVED"
   xcodebuild "$@" \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
+    -configuration "$CONFIGURATION" \
     -destination 'platform=macOS' \
     -allowProvisioningUpdates \
     CODE_SIGN_STYLE=Automatic \
@@ -68,7 +72,7 @@ run_xcodebuild() {
 
 built_app_path() {
   local dir
-  dir=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -showBuildSettings 2>/dev/null \
+  dir=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration "$CONFIGURATION" -showBuildSettings 2>/dev/null \
     | sed -n 's/^[[:space:]]*TARGET_BUILD_DIR = //p' | head -1)
   [[ -n "$dir" && -d "$dir/$APP_NAME" ]] && echo "$dir/$APP_NAME"
 }

@@ -64,8 +64,8 @@ enum L10n {
             .en: "Paused (no automatic refresh)"
         ],
         "menu.authNeeded": [
-            .ja: "Cursor のセッションを取得できません。Cursor.app にログインするか、下に Cookie の値だけを貼り付けてください。",
-            .en: "Could not read a Cursor session. Sign in to Cursor.app or paste the cookie value below."
+            .ja: "Cursor のセッションを取得できません。Cursor.app に再ログインするか、cursor.com の Cookie（WorkosCursorSessionToken など）の値だけを貼り付けてください。",
+            .en: "Could not read a Cursor session. Re-sign in to Cursor.app, or paste a cursor.com cookie value (e.g. WorkosCursorSessionToken) below."
         ],
         "menu.cookieSection": [.ja: "セッション Cookie", .en: "Session Cookie"],
         "menu.cookieSaved": [
