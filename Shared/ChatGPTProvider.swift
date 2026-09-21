@@ -16,14 +16,18 @@ struct ChatGPTProvider: UsageProvider {
     func clearManualCredential() { ChatGPTSession.clearManualToken() }
 
     func fetchSnapshot() async throws -> UsageSnapshot {
-        let auth = try ChatGPTSession.resolveAuth()
-        let usage = try await Self.fetchUsage(auth: auth)
-        return Self.mapUsage(
-            usage,
-            accountLabel: auth.email,
-            fallbackPlanType: auth.planType,
-            fetchedAt: Date()
-        )
+        switch try ChatGPTSession.resolveCredential() {
+        case .apiKey(let apiKey):
+            return try await Self.fetchOfficialSnapshot(apiKey: apiKey)
+        case .chatgpt(let auth):
+            let usage = try await Self.fetchUsage(auth: auth)
+            return Self.mapUsage(
+                usage,
+                accountLabel: auth.email,
+                fallbackPlanType: auth.planType,
+                fetchedAt: Date()
+            )
+        }
     }
 
     // MARK: - Network
@@ -79,6 +83,48 @@ struct ChatGPTProvider: UsageProvider {
             return try JSONDecoder().decode(ChatGPTUsageResponse.self, from: data)
         } catch {
             usageLogger.error("chatgpt usage decode failed: \(String(describing: error), privacy: .public)")
+            throw UsageAPIError.decodeFailed
+        }
+    }
+
+    static func fetchOfficialSnapshot(apiKey: String, now: Date = Date()) async throws -> UsageSnapshot {
+        let month = DateParsing.utcMonthBounds(containing: now)
+        let costs = try await fetchCosts(apiKey: apiKey, start: month.start)
+        return mapCosts(costs, monthEnd: month.end, fetchedAt: now)
+    }
+
+    private static func fetchCosts(apiKey: String, start: Date) async throws -> OpenAICostsResponse {
+        var components = URLComponents(string: "https://api.openai.com/v1/organization/costs")!
+        components.queryItems = [
+            URLQueryItem(name: "start_time", value: String(Int(start.timeIntervalSince1970))),
+            URLQueryItem(name: "bucket_width", value: "1d"),
+            URLQueryItem(name: "limit", value: "31")
+        ]
+        guard let url = components.url else { throw UsageAPIError.decodeFailed }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("AIUsageWidget/1.1", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw UsageAPIError.unauthorized
+        }
+        if http.statusCode == 429 {
+            throw UsageAPIError.rateLimited
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw UsageAPIError.httpStatus(http.statusCode)
+        }
+        do {
+            return try JSONDecoder().decode(OpenAICostsResponse.self, from: data)
+        } catch {
+            usageLogger.error("openai costs decode failed: \(String(describing: error), privacy: .public)")
             throw UsageAPIError.decodeFailed
         }
     }
@@ -173,6 +219,29 @@ struct ChatGPTProvider: UsageProvider {
         case "prolite", "pro_lite": return "Pro Lite"
         default: return nil
         }
+    }
+
+    static func mapCosts(
+        _ costs: OpenAICostsResponse,
+        monthEnd: Date,
+        fetchedAt: Date
+    ) -> UsageSnapshot {
+        UsageSnapshot(
+            providerID: Self.id,
+            accountLabel: nil,
+            plan: PlanInfo(name: "API", priceText: nil, resetAt: monthEnd),
+            meters: [],
+            spend: SpendMeter(
+                id: "api-cost",
+                titleKey: "spend.apiCost",
+                noteKey: "spend.apiCost.note",
+                usedUSD: costs.totalUSD,
+                limitUSD: nil,
+                isUnlimited: true
+            ),
+            fetchedAt: fetchedAt,
+            errorMessage: nil
+        )
     }
 
     private static func windowMeter(
@@ -277,4 +346,35 @@ struct ChatGPTCredits: Codable, Equatable {
         case unlimited
         case balance
     }
+}
+
+struct OpenAICostsResponse: Codable, Equatable {
+    var data: [OpenAICostBucket]?
+
+    var totalUSD: Double {
+        (data ?? []).reduce(0) { partial, bucket in
+            partial + (bucket.results ?? []).reduce(0) { $0 + ($1.amount?.value?.value ?? 0) }
+        }
+    }
+}
+
+struct OpenAICostBucket: Codable, Equatable {
+    var startTime: JSONNumber?
+    var endTime: JSONNumber?
+    var results: [OpenAICostResult]?
+
+    enum CodingKeys: String, CodingKey {
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case results
+    }
+}
+
+struct OpenAICostResult: Codable, Equatable {
+    var amount: OpenAICostAmount?
+}
+
+struct OpenAICostAmount: Codable, Equatable {
+    var value: JSONNumber?
+    var currency: String?
 }

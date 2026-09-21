@@ -90,25 +90,28 @@ OAuth の refresh はしません（単回利用の refresh token を潰さな�
 
 ### Claude
 
-エンドポイント: `GET https://api.anthropic.com/api/oauth/usage`
+プラン枠（OAuth）: `GET https://api.anthropic.com/api/oauth/usage`
 
-1. メニューバーに保存した access token（Keychain）※あれば優先
+1. メニューバーに保存した access token（Keychain）※あれば優先。`sk-ant-admin01-` / `sk-ant-api` なら公式 Cost API を使う
 2. Claude Code の Keychain（`Claude Code-credentials`）
 3. `~/.claude/.credentials.json`（`CLAUDE_CONFIG_DIR` があればそちら）
+4. 環境変数 `ANTHROPIC_ADMIN_KEY` / `ANTHROPIC_API_KEY`（公式 Cost API）
 
-Claude Code にログインしているのが前提です。API キー運用ではプラン使用量は取れません。
-期限切れのときは Claude Code を一度起動してください（こちらから refresh しません）。
+Claude Code にログインしていると 5時間・週次枠が取れます。API キーだけのときは公式
+`GET https://api.anthropic.com/v1/organizations/cost_report`（Admin キーが必要）で今月の API 費用を出します。個人アカウントでは Admin API が使えないことがあります。期限切れのときは Claude Code を一度起動してください（こちらから refresh しません）。
 
 ### ChatGPT（Codex）
 
-エンドポイント: `GET https://chatgpt.com/backend-api/wham/usage`
+プラン枠（ChatGPT ログイン）: `GET https://chatgpt.com/backend-api/wham/usage`
 （404 のときは `.../codex/usage`）
 
-1. メニューバーに保存した access token（Keychain）※あれば優先
-2. Codex CLI の `~/.codex/auth.json`（`CODEX_HOME` があればそちら）
+1. メニューバーに保存した access token または API キー（Keychain）※あれば優先。`sk-` なら公式 Cost API を使う
+2. Codex CLI の `~/.codex/auth.json`（`CODEX_HOME` があればそちら）。access token があればプラン枠、API キーだけなら公式 Cost API
+3. 環境変数 `OPENAI_ADMIN_KEY` / `OPENAI_API_KEY`
 
-Codex に ChatGPT アカウントでログインしているのが前提です。API キー運用では
-プラン使用量は取れません。期限切れのときは Codex を一度起動してください。
+Codex に ChatGPT アカウントでログインしていると Codex の利用枠が取れます。API キーだけのときは公式
+`GET https://api.openai.com/v1/organization/costs`（Admin キーが必要）で今月の API 費用を出します。
+ログインと API キーが両方あるファイルではプラン枠を優先します。期限切れのときは Codex を一度起動してください。
 
 ### 権限まわり
 

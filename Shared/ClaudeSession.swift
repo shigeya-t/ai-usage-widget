@@ -25,22 +25,41 @@ struct ClaudeOAuthCreds: Equatable {
     var email: String?
 }
 
+enum ClaudeCredential: Equatable {
+    case oauth(ClaudeOAuthCreds)
+    case apiKey(String)
+}
+
 /// Claude Code のローカル資格情報を読む。リフレッシュトークンは使わず、書き戻しもしない。
 enum ClaudeSession {
     private static let manualService = "jp.shigeya.AIUsageWidget.claude"
     private static let manualAccount = "claudeAiOauthAccessToken"
     private static let claudeCodeKeychainService = "Claude Code-credentials"
 
-    static func resolveAccessToken() throws -> ClaudeOAuthCreds {
+    static func resolveCredential() throws -> ClaudeCredential {
         if let manual = loadManualToken(), !manual.isEmpty {
             let token = normalizeToken(manual)
             guard !token.isEmpty else { throw ClaudeSessionError.invalidToken }
+            if isAPIKey(token) { return .apiKey(token) }
             if isJWTExpired(token) { throw ClaudeSessionError.tokenExpired }
-            return ClaudeOAuthCreds(accessToken: token, expiresAt: JWT.expiry(token)?.timeIntervalSince1970)
+            return .oauth(ClaudeOAuthCreds(accessToken: token, expiresAt: JWT.expiry(token)?.timeIntervalSince1970))
         }
-        if let creds = try loadLocalCredentials() {
-            try validate(creds)
-            return creds
+        do {
+            if let creds = try loadLocalCredentials() {
+                if isAPIKey(creds.accessToken) {
+                    return .apiKey(creds.accessToken)
+                }
+                try validate(creds)
+                return .oauth(creds)
+            }
+        } catch ClaudeSessionError.apiKeyMode {
+            if let key = try loadLocalAPIKey() ?? environmentAPIKey() {
+                return .apiKey(key)
+            }
+            throw ClaudeSessionError.apiKeyMode
+        }
+        if let key = try loadLocalAPIKey() ?? environmentAPIKey() {
+            return .apiKey(key)
         }
         throw ClaudeSessionError.tokenMissing
     }
@@ -48,6 +67,8 @@ enum ClaudeSession {
     static func hasAnyCredential() -> Bool {
         if let manual = loadManualToken(), !manual.isEmpty { return true }
         if let creds = try? loadLocalCredentials(), !creds.accessToken.isEmpty { return true }
+        if let key = try? loadLocalAPIKey(), !key.isEmpty { return true }
+        if let key = environmentAPIKey(), !key.isEmpty { return true }
         return false
     }
 
@@ -73,12 +94,50 @@ enum ClaudeSession {
         if value.lowercased().hasPrefix("bearer ") {
             value = String(value.dropFirst(7)).trimmingCharacters(in: .whitespaces)
         }
-        if value.hasPrefix("{"), let data = value.data(using: .utf8),
-           let creds = try? parseCredentialsJSON(data)
-        {
-            return creds.accessToken
+        if value.hasPrefix("{"), let data = value.data(using: .utf8) {
+            if let creds = try? parseCredentialsJSON(data) {
+                return creds.accessToken
+            }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let key = parseAPIKey(from: json)
+            {
+                return key
+            }
         }
         return value
+    }
+
+    static func isAPIKey(_ raw: String) -> Bool {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if value.hasPrefix("sk-ant-oat-") { return false }
+        return value.hasPrefix("sk-ant-")
+    }
+
+    static func parseAPIKey(from json: [String: Any]) -> String? {
+        let candidates = [
+            json["apiKey"] as? String,
+            json["api_key"] as? String,
+            json["ANTHROPIC_API_KEY"] as? String,
+            json["ANTHROPIC_ADMIN_KEY"] as? String,
+            json["anthropic_api_key"] as? String
+        ]
+        for raw in candidates {
+            guard let raw else { continue }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isAPIKey(trimmed) { return trimmed }
+        }
+        return nil
+    }
+
+    static func environmentAPIKey() -> String? {
+        let env = ProcessInfo.processInfo.environment
+        for name in ["ANTHROPIC_ADMIN_KEY", "ANTHROPIC_ADMIN_API_KEY", "ANTHROPIC_API_KEY"] {
+            if let value = env[name] {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if isAPIKey(trimmed) { return trimmed }
+            }
+        }
+        return nil
     }
 
     static func parseCredentialsJSON(_ data: Data) throws -> ClaudeOAuthCreds {
@@ -167,6 +226,20 @@ enum ClaudeSession {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
         let data = try Data(contentsOf: fileURL)
         return try parseCredentialsJSON(data)
+    }
+
+    static func loadLocalAPIKey(fileURL: URL = defaultCredentialsURL) throws -> String? {
+        if let blob = readClaudeCodeKeychainBlob(),
+           let data = blob.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let key = parseAPIKey(from: json)
+        {
+            return key
+        }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        let data = try Data(contentsOf: fileURL)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return parseAPIKey(from: json)
     }
 
     private static func readClaudeCodeKeychainBlob() -> String? {

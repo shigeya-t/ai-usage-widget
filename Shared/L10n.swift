@@ -63,6 +63,11 @@ enum L10n {
             .ja: "ChatGPT のクレジット残高です。",
             .en: "ChatGPT credit balance."
         ],
+        "spend.apiCost": [.ja: "API 使用量", .en: "API usage"],
+        "spend.apiCost.note": [
+            .ja: "公式 Cost API による今月の API 費用です。プラン枠のパーセントではありません。",
+            .en: "This month’s API spend from the official Cost API, not a plan-window percent."
+        ],
         "meter.cursorNote": [
             .ja: "上限を超えた追加使用は Other Models 枠またはオンデマンド課金に回ります。",
             .en: "Additional usage beyond limits consumes Other Models quota or on-demand spend."
@@ -176,24 +181,24 @@ enum L10n {
             .en: "Authentication failed. Re-sign in to Cursor or update the cookie."
         ],
         "error.unauthorized.claude": [
-            .ja: "認証に失敗しました。Claude Code に再ログインするか token を更新してください。",
-            .en: "Authentication failed. Re-sign in to Claude Code or update the token."
+            .ja: "認証に失敗しました。Claude Code に再ログインするか、Admin API キーを更新してください。",
+            .en: "Authentication failed. Re-sign in to Claude Code or update the Admin API key."
         ],
         "error.unauthorized.chatgpt": [
-            .ja: "認証に失敗しました。Codex に再ログインするか token を更新してください。",
-            .en: "Authentication failed. Re-sign in to Codex or update the token."
+            .ja: "認証に失敗しました。Codex に再ログインするか、Admin API キーを更新してください。",
+            .en: "Authentication failed. Re-sign in to Codex or update the Admin API key."
         ],
         "error.rateLimited": [
             .ja: "使用量 API が混雑しています。しばらく待ってから更新してください。",
             .en: "The usage API is rate-limited. Wait a bit, then refresh."
         ],
         "error.apiKeyMode.claude": [
-            .ja: "Claude が API キー運用です。プラン使用量は Claude Code のアカウントログインでのみ取れます。",
-            .en: "Claude is using an API key. Subscription usage is available only after a Claude Code account login."
+            .ja: "Claude のプラン枠は Claude Code のアカウントログインで取れます。API 消費は公式 Cost API 用の Admin キー（sk-ant-admin01- など）が必要です。",
+            .en: "Claude plan windows need a Claude Code account login. API spend needs an Admin key for the official Cost API (e.g. sk-ant-admin01-)."
         ],
         "error.apiKeyMode.chatgpt": [
-            .ja: "Codex が API キー運用です。ChatGPT のプラン使用量は Codex の ChatGPT ログインでのみ取れます。",
-            .en: "Codex is using an API key. ChatGPT plan usage is available only after a Codex ChatGPT login."
+            .ja: "ChatGPT のプラン枠は Codex の ChatGPT ログインで取れます。API 消費は公式 Cost API 用の Admin キーが必要です。",
+            .en: "ChatGPT plan windows need a Codex ChatGPT login. API spend needs an Admin key for the official Cost API."
         ],
         "error.network": [
             .ja: "使用量の取得に失敗しました: %@",

@@ -91,26 +91,30 @@ Paste a cookie only when automatic resolution fails:
 
 ### Claude
 
-Endpoint: `GET https://api.anthropic.com/api/oauth/usage`
+Plan windows (OAuth): `GET https://api.anthropic.com/api/oauth/usage`
 
-1. Manually saved access token in Keychain (if present, preferred)
+1. Manually saved access token in Keychain (if present, preferred). `sk-ant-admin01-` / `sk-ant-api` keys use the official Cost API
 2. Claude Code Keychain (`Claude Code-credentials`)
 3. `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR` if set)
+4. `ANTHROPIC_ADMIN_KEY` / `ANTHROPIC_API_KEY` (official Cost API)
 
-A Claude Code account login is required. API-key-only setups cannot show
-subscription usage. If the token expired, open Claude Code once (this app does
+A Claude Code account login shows the 5-hour and weekly windows. API-key-only setups use the official
+`GET https://api.anthropic.com/v1/organizations/cost_report` (Admin key required) for this month’s API spend.
+The Admin API is unavailable for many individual accounts. If the token expired, open Claude Code once (this app does
 not refresh tokens).
 
 ### ChatGPT (Codex)
 
-Endpoint: `GET https://chatgpt.com/backend-api/wham/usage`
+Plan windows (ChatGPT login): `GET https://chatgpt.com/backend-api/wham/usage`
 (falls back to `.../codex/usage` on 404)
 
-1. Manually saved access token in Keychain (if present, preferred)
-2. Codex CLI `~/.codex/auth.json` (`CODEX_HOME` if set)
+1. Manually saved access token or API key in Keychain (if present, preferred). `sk-` keys use the official Cost API
+2. Codex CLI `~/.codex/auth.json` (`CODEX_HOME` if set). An access token shows plan windows; API-key-only uses the official Cost API
+3. `OPENAI_ADMIN_KEY` / `OPENAI_API_KEY`
 
-A Codex ChatGPT login is required. API-key-only setups cannot show plan usage.
-If the token expired, open Codex once.
+A Codex ChatGPT login shows Codex rate-limit windows. API-key-only setups use the official
+`GET https://api.openai.com/v1/organization/costs` (Admin key required) for this month’s API spend.
+If a file has both a ChatGPT login and an API key, plan windows win. If the token expired, open Codex once.
 
 ### Permissions
 

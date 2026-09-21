@@ -54,10 +54,13 @@ Keychain も本番経路では触らない（Cookie 正規化と JSON マッピ�
 ## データソース
 
 取得はホストの各 `*Provider.swift` に集約する。ウィジェット拡張は通信しない。
+公式の使用量 API がある資格情報ではそちらを優先する。
 
-- Cursor: `GET https://cursor.com/api/usage-summary`（非公式）。認証は `WorkosCursorSessionToken` Cookie。
-- Claude: `GET https://api.anthropic.com/api/oauth/usage`。Claude Code の OAuth access token（refresh しない）。
-- ChatGPT / Codex: `GET https://chatgpt.com/backend-api/wham/usage`（404 時は `.../codex/usage`）。Codex の access token（refresh しない）。
+- Cursor: 個人向け公式 API はない。`GET https://cursor.com/api/usage-summary`（非公式）。認証は `WorkosCursorSessionToken` Cookie。
+- Claude サブスク: `GET https://api.anthropic.com/api/oauth/usage`。Claude Code の OAuth access token（refresh しない）。
+- Claude API: 公式 `GET https://api.anthropic.com/v1/organizations/cost_report`（Admin / API キー）。
+- ChatGPT / Codex サブスク: `GET https://chatgpt.com/backend-api/wham/usage`（404 時は `.../codex/usage`）。Codex の access token（refresh しない）。
+- OpenAI API: 公式 `GET https://api.openai.com/v1/organization/costs`（Admin / API キー）。
 
 ホストはメニューバー常駐（サンドボックスなし。Cursor の `state.vscdb` や Claude / Codex のローカル資格情報を読むため）。
 ウィジェット拡張はサンドボックスあり。App Group は Team ID 付き。

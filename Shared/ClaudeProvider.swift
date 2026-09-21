@@ -16,19 +16,23 @@ struct ClaudeProvider: UsageProvider {
     func clearManualCredential() { ClaudeSession.clearManualToken() }
 
     func fetchSnapshot() async throws -> UsageSnapshot {
-        let creds = try ClaudeSession.resolveAccessToken()
-        let usage = try await Self.fetchUsage(accessToken: creds.accessToken)
-        var account = creds.email
-        if account == nil, let profile = try? await Self.fetchProfile(accessToken: creds.accessToken) {
-            account = profile.email
+        switch try ClaudeSession.resolveCredential() {
+        case .apiKey(let apiKey):
+            return try await Self.fetchOfficialSnapshot(apiKey: apiKey)
+        case .oauth(let creds):
+            let usage = try await Self.fetchUsage(accessToken: creds.accessToken)
+            var account = creds.email
+            if account == nil, let profile = try? await Self.fetchProfile(accessToken: creds.accessToken) {
+                account = profile.email
+            }
+            return Self.mapUsage(
+                usage,
+                accountLabel: account,
+                subscriptionType: creds.subscriptionType,
+                rateLimitTier: creds.rateLimitTier,
+                fetchedAt: Date()
+            )
         }
-        return Self.mapUsage(
-            usage,
-            accountLabel: account,
-            subscriptionType: creds.subscriptionType,
-            rateLimitTier: creds.rateLimitTier,
-            fetchedAt: Date()
-        )
     }
 
     // MARK: - Network
@@ -75,6 +79,50 @@ struct ClaudeProvider: UsageProvider {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
             usageLogger.error("claude usage decode failed: \(String(describing: error), privacy: .public)")
+            throw UsageAPIError.decodeFailed
+        }
+    }
+
+    static func fetchOfficialSnapshot(apiKey: String, now: Date = Date()) async throws -> UsageSnapshot {
+        let month = DateParsing.utcMonthBounds(containing: now)
+        let report = try await fetchCostReport(apiKey: apiKey, start: month.start, end: month.end)
+        return mapCostReport(report, monthEnd: month.end, fetchedAt: now)
+    }
+
+    private static func fetchCostReport(apiKey: String, start: Date, end: Date) async throws -> ClaudeCostReportResponse {
+        var components = URLComponents(string: "https://api.anthropic.com/v1/organizations/cost_report")!
+        components.queryItems = [
+            URLQueryItem(name: "starting_at", value: DateParsing.rfc3339(start)),
+            URLQueryItem(name: "ending_at", value: DateParsing.rfc3339(end)),
+            URLQueryItem(name: "bucket_width", value: "1d"),
+            URLQueryItem(name: "limit", value: "31")
+        ]
+        guard let url = components.url else { throw UsageAPIError.decodeFailed }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw UsageAPIError.unauthorized
+        }
+        if http.statusCode == 429 {
+            throw UsageAPIError.rateLimited
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw UsageAPIError.httpStatus(http.statusCode)
+        }
+        do {
+            return try JSONDecoder().decode(ClaudeCostReportResponse.self, from: data)
+        } catch {
+            usageLogger.error("claude cost_report decode failed: \(String(describing: error), privacy: .public)")
             throw UsageAPIError.decodeFailed
         }
     }
@@ -174,6 +222,36 @@ struct ClaudeProvider: UsageProvider {
         default: return nil
         }
     }
+
+    static func mapCostReport(
+        _ report: ClaudeCostReportResponse,
+        monthEnd: Date,
+        fetchedAt: Date
+    ) -> UsageSnapshot {
+        let usedUSD = report.totalUSD
+        return UsageSnapshot(
+            providerID: Self.id,
+            accountLabel: nil,
+            plan: PlanInfo(name: "API", priceText: nil, resetAt: monthEnd),
+            meters: [],
+            spend: SpendMeter(
+                id: "api-cost",
+                titleKey: "spend.apiCost",
+                noteKey: "spend.apiCost.note",
+                usedUSD: usedUSD,
+                limitUSD: nil,
+                isUnlimited: true
+            ),
+            fetchedAt: fetchedAt,
+            errorMessage: nil
+        )
+    }
+
+    /// Anthropic Cost API の amount はセント単位の小数文字列（"123.45" = $1.23）。
+    static func usdFromCentsString(_ raw: String?) -> Double {
+        guard let raw, let cents = Double(raw) else { return 0 }
+        return cents / 100.0
+    }
 }
 
 // MARK: - Wire types
@@ -232,4 +310,31 @@ struct ClaudeOAuthProfileResponse: Codable {
 
 struct ClaudeProfileAccount: Codable {
     var email: String?
+}
+
+struct ClaudeCostReportResponse: Codable, Equatable {
+    var data: [ClaudeCostBucket]?
+
+    var totalUSD: Double {
+        (data ?? []).reduce(0) { partial, bucket in
+            partial + (bucket.results ?? []).reduce(0) { $0 + ClaudeProvider.usdFromCentsString($1.amount) }
+        }
+    }
+}
+
+struct ClaudeCostBucket: Codable, Equatable {
+    var startingAt: String?
+    var endingAt: String?
+    var results: [ClaudeCostResult]?
+
+    enum CodingKeys: String, CodingKey {
+        case startingAt = "starting_at"
+        case endingAt = "ending_at"
+        case results
+    }
+}
+
+struct ClaudeCostResult: Codable, Equatable {
+    var amount: String?
+    var currency: String?
 }

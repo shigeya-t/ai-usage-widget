@@ -165,6 +165,7 @@ final class L10nTests: XCTestCase {
             "meter.codeReview",
             "spend.onDemand",
             "spend.extraUsage",
+            "spend.apiCost",
             "plan.reset.compact",
             "spend.amount.compact",
             "menu.pause",
@@ -277,10 +278,37 @@ final class ClaudeProviderMappingTests: XCTestCase {
         XCTAssertEqual(ClaudeProvider.displayPlanName(nil), "Claude")
     }
 
+    func testMapsOfficialCostReportCentsToUSD() throws {
+        let report = try decodeCostFixture("claude_cost_report_month")
+        let monthEnd = Date(timeIntervalSince1970: 1_759_276_800)
+        let snap = ClaudeProvider.mapCostReport(report, monthEnd: monthEnd, fetchedAt: Date(timeIntervalSince1970: 0))
+
+        XCTAssertEqual(snap.providerID, "claude")
+        XCTAssertEqual(snap.plan.name, "API")
+        XCTAssertEqual(snap.plan.resetAt, monthEnd)
+        XCTAssertTrue(snap.meters.isEmpty)
+        let spend = try XCTUnwrap(snap.spend)
+        XCTAssertEqual(spend.titleKey, "spend.apiCost")
+        XCTAssertEqual(spend.usedUSD, 1.7345, accuracy: 0.0001)
+        XCTAssertTrue(spend.isUnlimited)
+    }
+
+    func testUsdFromCentsString() {
+        XCTAssertEqual(ClaudeProvider.usdFromCentsString("123.45"), 1.2345, accuracy: 0.0001)
+        XCTAssertEqual(ClaudeProvider.usdFromCentsString("50"), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(ClaudeProvider.usdFromCentsString(nil), 0)
+    }
+
     private func decodeFixture(_ name: String) throws -> ClaudeOAuthUsageResponse {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(ClaudeOAuthUsageResponse.self, from: data)
+    }
+
+    private func decodeCostFixture(_ name: String) throws -> ClaudeCostReportResponse {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(ClaudeCostReportResponse.self, from: data)
     }
 }
 
@@ -323,6 +351,16 @@ final class ClaudeSessionTests: XCTestCase {
         XCTAssertThrowsError(try ClaudeSession.parseCredentialsJSON(Data(json.utf8))) { error in
             XCTAssertEqual(error as? ClaudeSessionError, .apiKeyMode)
         }
+    }
+
+    func testParseAPIKeyFromCredentialsJSON() {
+        let json = #"{"ANTHROPIC_API_KEY":"sk-ant-api03-test"}"#
+        let key = ClaudeSession.parseAPIKey(
+            from: (try! JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])!
+        )
+        XCTAssertEqual(key, "sk-ant-api03-test")
+        XCTAssertTrue(ClaudeSession.isAPIKey("sk-ant-admin01-abc"))
+        XCTAssertFalse(ClaudeSession.isAPIKey("sk-ant-oat-test"))
     }
 
     func testReadCredentialsFile() throws {
@@ -393,10 +431,30 @@ final class ChatGPTProviderMappingTests: XCTestCase {
         XCTAssertEqual(ChatGPTProvider.displayPlanName(nil), "ChatGPT")
     }
 
+    func testMapsOfficialOrganizationCosts() throws {
+        let costs = try decodeCostFixture("openai_organization_costs")
+        let monthEnd = Date(timeIntervalSince1970: 1_759_276_800)
+        let snap = ChatGPTProvider.mapCosts(costs, monthEnd: monthEnd, fetchedAt: Date(timeIntervalSince1970: 0))
+
+        XCTAssertEqual(snap.providerID, "chatgpt")
+        XCTAssertEqual(snap.plan.name, "API")
+        XCTAssertTrue(snap.meters.isEmpty)
+        let spend = try XCTUnwrap(snap.spend)
+        XCTAssertEqual(spend.usedUSD, 12.75, accuracy: 0.001)
+        XCTAssertTrue(spend.isUnlimited)
+        XCTAssertEqual(spend.titleKey, "spend.apiCost")
+    }
+
     private func decodeFixture(_ name: String) throws -> ChatGPTUsageResponse {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(ChatGPTUsageResponse.self, from: data)
+    }
+
+    private func decodeCostFixture(_ name: String) throws -> OpenAICostsResponse {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(OpenAICostsResponse.self, from: data)
     }
 }
 
@@ -431,11 +489,20 @@ final class ChatGPTSessionTests: XCTestCase {
         XCTAssertEqual(auth.planType, "plus")
     }
 
-    func testParseAPIKeyOnlyThrows() {
+    func testParseAPIKeyOnlyThrowsFromOAuthParser() {
         let json = #"{"OPENAI_API_KEY":"sk-test"}"#
         XCTAssertThrowsError(try ChatGPTSession.parseAuthJSON(Data(json.utf8))) { error in
             XCTAssertEqual(error as? ChatGPTSessionError, .apiKeyMode)
         }
+    }
+
+    func testParseCredentialPrefersOfficialAPIKeyWhenNoAccessToken() throws {
+        let json = #"{"OPENAI_API_KEY":"sk-test"}"#
+        let credential = try ChatGPTSession.parseCredential(Data(json.utf8))
+        XCTAssertEqual(credential, .apiKey("sk-test"))
+        XCTAssertTrue(ChatGPTSession.isAPIKey("sk-proj-abc"))
+        XCTAssertFalse(ChatGPTSession.isAPIKey("sk-ant-api03-nope"))
+        XCTAssertFalse(ChatGPTSession.isAPIKey("eyJhbGciOiJub25lIn0.e30.sig"))
     }
 
     func testReadCodexAuthFile() throws {
@@ -482,6 +549,13 @@ final class DateParsingTests: XCTestCase {
         XCTAssertEqual(unix.date, Date(timeIntervalSince1970: 1_770_000_000))
         let iso = try JSONDecoder().decode(JSONTimestamp.self, from: Data(#""2026-09-21T18:00:00.000Z""#.utf8))
         XCTAssertEqual(DateParsing.iso8601("2026-09-21T18:00:00.000Z"), iso.date)
+    }
+
+    func testUTCMonthBounds() {
+        let date = Date(timeIntervalSince1970: 1_789_948_800) // 2026-09-21T00:00:00Z
+        let bounds = DateParsing.utcMonthBounds(containing: date)
+        XCTAssertEqual(bounds.start, Date(timeIntervalSince1970: 1_788_220_800)) // 2026-09-01T00:00:00Z
+        XCTAssertEqual(bounds.end, Date(timeIntervalSince1970: 1_790_812_800)) // 2026-10-01T00:00:00Z
     }
 }
 

@@ -24,29 +24,42 @@ struct ChatGPTAuth: Equatable {
     var planType: String?
 }
 
+enum ChatGPTCredential: Equatable {
+    case chatgpt(ChatGPTAuth)
+    case apiKey(String)
+}
+
 /// Codex CLI / ChatGPT のローカル資格情報を読む。auth.json への書き戻しと refresh はしない。
 enum ChatGPTSession {
     private static let manualService = "jp.shigeya.AIUsageWidget.chatgpt"
     private static let manualAccount = "ChatGPTAccessToken"
 
-    static func resolveAuth() throws -> ChatGPTAuth {
+    static func resolveCredential() throws -> ChatGPTCredential {
         if let manual = loadManualToken(), !manual.isEmpty {
             let token = normalizeToken(manual)
             guard !token.isEmpty else { throw ChatGPTSessionError.invalidToken }
+            if isAPIKey(token) { return .apiKey(token) }
             if isExpired(token) { throw ChatGPTSessionError.tokenExpired }
-            return authFromAccessToken(token)
+            return .chatgpt(authFromAccessToken(token))
         }
-        guard let auth = try readCodexAuth() else {
-            throw ChatGPTSessionError.tokenMissing
+        if let credential = try readCodexCredential() {
+            return try validated(credential)
         }
-        if auth.accessToken.isEmpty { throw ChatGPTSessionError.tokenMissing }
-        if isExpired(auth.accessToken) { throw ChatGPTSessionError.tokenExpired }
-        return auth
+        if let key = environmentAPIKey() {
+            return .apiKey(key)
+        }
+        throw ChatGPTSessionError.tokenMissing
     }
 
     static func hasAnyCredential() -> Bool {
         if let manual = loadManualToken(), !manual.isEmpty { return true }
-        if let auth = try? readCodexAuth(), !auth.accessToken.isEmpty { return true }
+        if let credential = try? readCodexCredential() {
+            switch credential {
+            case .chatgpt(let auth): return !auth.accessToken.isEmpty
+            case .apiKey(let key): return !key.isEmpty
+            }
+        }
+        if let key = environmentAPIKey(), !key.isEmpty { return true }
         return false
     }
 
@@ -72,14 +85,50 @@ enum ChatGPTSession {
             value = String(value.dropFirst(7)).trimmingCharacters(in: .whitespaces)
         }
         if value.hasPrefix("{"), let data = value.data(using: .utf8),
-           let auth = try? parseAuthJSON(data)
+           let credential = try? parseCredential(data)
         {
-            return auth.accessToken
+            switch credential {
+            case .chatgpt(let auth): return auth.accessToken
+            case .apiKey(let key): return key
+            }
         }
         return value
     }
 
-    static func parseAuthJSON(_ data: Data) throws -> ChatGPTAuth {
+    static func isAPIKey(_ raw: String) -> Bool {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("sk-ant-") { return false }
+        return value.lowercased().hasPrefix("sk-")
+    }
+
+    static func parseAPIKey(from json: [String: Any]) -> String? {
+        let candidates = [
+            json["OPENAI_API_KEY"] as? String,
+            json["openai_api_key"] as? String,
+            json["OPENAI_ADMIN_KEY"] as? String,
+            json["api_key"] as? String,
+            json["apiKey"] as? String
+        ]
+        for raw in candidates {
+            guard let raw else { continue }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isAPIKey(trimmed) { return trimmed }
+        }
+        return nil
+    }
+
+    static func environmentAPIKey() -> String? {
+        let env = ProcessInfo.processInfo.environment
+        for name in ["OPENAI_ADMIN_KEY", "OPENAI_API_KEY"] {
+            if let value = env[name] {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if isAPIKey(trimmed) { return trimmed }
+            }
+        }
+        return nil
+    }
+
+    static func parseCredential(_ data: Data) throws -> ChatGPTCredential {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ChatGPTSessionError.invalidToken
         }
@@ -88,18 +137,25 @@ enum ChatGPTSession {
             ?? (json["access_token"] as? String)
             ?? ""
         let trimmed = access.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            if (json["OPENAI_API_KEY"] as? String)?.isEmpty == false
-                || (json["openai_api_key"] as? String)?.isEmpty == false
-            {
-                throw ChatGPTSessionError.apiKeyMode
-            }
-            throw ChatGPTSessionError.tokenMissing
+        if !trimmed.isEmpty {
+            let explicitAccount = (tokens?["account_id"] as? String)
+                ?? (json["account_id"] as? String)
+            let idToken = (tokens?["id_token"] as? String) ?? (json["id_token"] as? String)
+            return .chatgpt(enrich(accessToken: trimmed, explicitAccountID: explicitAccount, idToken: idToken))
         }
-        let explicitAccount = (tokens?["account_id"] as? String)
-            ?? (json["account_id"] as? String)
-        let idToken = (tokens?["id_token"] as? String) ?? (json["id_token"] as? String)
-        return enrich(accessToken: trimmed, explicitAccountID: explicitAccount, idToken: idToken)
+        if let key = parseAPIKey(from: json) {
+            return .apiKey(key)
+        }
+        throw ChatGPTSessionError.tokenMissing
+    }
+
+    static func parseAuthJSON(_ data: Data) throws -> ChatGPTAuth {
+        switch try parseCredential(data) {
+        case .chatgpt(let auth):
+            return auth
+        case .apiKey:
+            throw ChatGPTSessionError.apiKeyMode
+        }
     }
 
     static func authFromAccessToken(_ token: String) -> ChatGPTAuth {
@@ -155,9 +211,32 @@ enum ChatGPTSession {
     }
 
     static func readCodexAuth(fileURL: URL = defaultAuthURL) throws -> ChatGPTAuth? {
+        switch try readCodexCredential(fileURL: fileURL) {
+        case .chatgpt(let auth):
+            return auth
+        case .apiKey:
+            throw ChatGPTSessionError.apiKeyMode
+        case .none:
+            return nil
+        }
+    }
+
+    static func readCodexCredential(fileURL: URL = defaultAuthURL) throws -> ChatGPTCredential? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
         let data = try Data(contentsOf: fileURL)
-        return try parseAuthJSON(data)
+        return try parseCredential(data)
+    }
+
+    private static func validated(_ credential: ChatGPTCredential) throws -> ChatGPTCredential {
+        switch credential {
+        case .apiKey(let key):
+            guard !key.isEmpty else { throw ChatGPTSessionError.tokenMissing }
+            return credential
+        case .chatgpt(let auth):
+            if auth.accessToken.isEmpty { throw ChatGPTSessionError.tokenMissing }
+            if isExpired(auth.accessToken) { throw ChatGPTSessionError.tokenExpired }
+            return credential
+        }
     }
 
     private static func storeKeychain(_ value: String) throws {

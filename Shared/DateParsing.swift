@@ -20,6 +20,20 @@ enum DateParsing {
         guard let value else { return nil }
         return Date(timeIntervalSince1970: value)
     }
+
+    static func rfc3339(_ date: Date) -> String {
+        basic.string(from: date)
+    }
+
+    /// UTC の今月 `[start, end)`。公式 Cost API の期間に使う。
+    static func utcMonthBounds(containing date: Date = Date()) -> (start: Date, end: Date) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let comps = calendar.dateComponents([.year, .month], from: date)
+        let start = calendar.date(from: comps) ?? date
+        let end = calendar.date(byAdding: .month, value: 1, to: start) ?? start.addingTimeInterval(32 * 24 * 3600)
+        return (start, end)
+    }
 }
 
 /// JSON の数値・文字列のどちらでも Double として読む。
