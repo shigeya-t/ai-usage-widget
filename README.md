@@ -1,8 +1,8 @@
-# Cursor使用量ウィジェット
+# AI使用量ウィジェット
 
 [English](README.en.md)
 
-Cursor などの AI サービスのプランと使用量を、macOS のメニューバーと
+Cursor / Claude / ChatGPT（Codex）のプランと使用量を、macOS のメニューバーと
 WidgetKit ウィジェットでいつでも確認できるアプリです。
 
 [東京地下鉄ウィジェット](https://github.com/shigeya-t/subway-widget) と同じく、
@@ -21,23 +21,27 @@ Cursor のダッシュボードには Plan & Usage がありますが、残り�
 かなりはみ出していた、ということがありました。
 
 設定ページを毎回開かなくても、メニューバーやデスクトップのウィジェットを一目見れば
-プラン枠とオンデマンド残高が分かるようにしたくて作りました。
+プラン枠と従量が分かるようにしたくて作りました。Claude と ChatGPT（Codex）も同じ
+置き場所から見られるようにしています。
 
 ## できること
 
-- Plan & Usage 相当の表示（プラン名・リセット日・Cursor Models / Other Models・On-Demand）
+- サービス切り替え（Cursor / Claude / ChatGPT）
+- Plan & Usage 相当の表示（プラン名・リセット日・パーセント棒・従量）
 - メニューバー常駐（Dock には出ません）とウィジェット（小・中・大）
 - 日本語 / English の切り替え（アプリとウィジェットで共有）
 - 一時停止と今すぐ更新（アプリ・ウィジェットの両方）
-- セッション Cookie の保存・上書き・削除
-- 他の AI サービス向けに差し替えやすい汎用スナップショット（v1 は Cursor のみ）
+- 手動トークン／Cookie の保存・上書き・削除（サービスごと）
 
 ## 必要なもの
 
 - macOS 14 以降
 - Xcode 15 以降
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）
-- Cursor.app へのログイン（推奨）。失敗時のフォールバックとしてブラウザ Cookie も可
+- 見たいサービスへのローカルログイン（推奨）:
+  - Cursor: Cursor.app
+  - Claude: Claude Code
+  - ChatGPT（Codex）: Codex CLI
 
 ## ビルドと導入
 
@@ -55,37 +59,62 @@ swift scripts/generate-app-icon.swift
 AppIntents が解決できず、ウィジェットがプレースホルダのまま止まります。
 証明書が複数あるときは `DEVELOPMENT_TEAM=XXXXXXXXXX ./scripts/deploy-local.sh` です。
 
-配置後、「ウィジェットを編集」から **Cursor使用量** を追加してください
-（英語のシステム言語では **Cursor Usage**）。
+配置後、「ウィジェットを編集」から **AI使用量** を追加してください
+（英語のシステム言語では **AI Usage**）。
 常時使う場合は、システム設定 →「一般」→「ログイン項目」に登録しておくと便利です。
 
-## 認証（Cursor）
+以前の **Cursor使用量.app** が残っている場合、`deploy-local.sh` が配置先から削除します。
 
-個人の Plan & Usage は公式 Admin API では取れません。このアプリはダッシュボードが
-使う非公式エンドポイント `GET https://cursor.com/api/usage-summary` を呼び出します。
+## 認証
 
-**通常は Cursor.app にログインしていれば足ります。** ローカルの
-`state.vscdb`（`cursorAuth/accessToken`）からセッションを組み立てます。
+個人のプラン使用量は公式 Admin API では取れません。このアプリは各サービスの
+非公式エンドポイントを、**ローカルアプリが保存したセッションを読んで** 呼び出します。
+OAuth の refresh はしません（単回利用の refresh token を潰さないため）。期限切れなら
+元アプリを一度起動してください。
 
-セッションの解決順:
+セッション Cookie / JWT / access token はログに出しません。ウィジェットへ渡すのは
+使用量のスナップショットだけです。
+
+### Cursor
+
+エンドポイント: `GET https://cursor.com/api/usage-summary`
 
 1. メニューバーに保存した Cookie（Keychain）※あれば優先
-2. Cursor.app の `state.vscdb`
+2. Cursor.app の `state.vscdb`（`cursorAuth/accessToken`）
 
 自動取得に失敗したときだけ、Cookie を手動で入れてください:
 
 1. https://cursor.com/dashboard?tab=usage を開く
-2. DevTools → Application → Cookies → `WorkosCursorSessionToken` の **Value** をコピー  
-   （名前が無い・別名だけのときは、この経路は使えないことがあります）
-3. メニューバーの入力欄（名前は固定表示）に値だけ貼り付けて保存
+2. DevTools → Application → Cookies → `WorkosCursorSessionToken` の **Value** をコピー
+3. メニューバーの入力欄に値だけ貼り付けて保存
 
-セッション Cookie / JWT はログに出しません。ウィジェットへ渡すのは使用量のスナップショットだけです。
+### Claude
+
+エンドポイント: `GET https://api.anthropic.com/api/oauth/usage`
+
+1. メニューバーに保存した access token（Keychain）※あれば優先
+2. Claude Code の Keychain（`Claude Code-credentials`）
+3. `~/.claude/.credentials.json`（`CLAUDE_CONFIG_DIR` があればそちら）
+
+Claude Code にログインしているのが前提です。API キー運用ではプラン使用量は取れません。
+期限切れのときは Claude Code を一度起動してください（こちらから refresh しません）。
+
+### ChatGPT（Codex）
+
+エンドポイント: `GET https://chatgpt.com/backend-api/wham/usage`
+（404 のときは `.../codex/usage`）
+
+1. メニューバーに保存した access token（Keychain）※あれば優先
+2. Codex CLI の `~/.codex/auth.json`（`CODEX_HOME` があればそちら）
+
+Codex に ChatGPT アカウントでログインしているのが前提です。API キー運用では
+プラン使用量は取れません。期限切れのときは Codex を一度起動してください。
 
 ### 権限まわり
 
-- **ホスト（メニューバー）**: App Sandbox なし。Cursor のローカルセッション DB を読むためです
+- **ホスト（メニューバー）**: App Sandbox なし。Cursor / Claude Code / Codex のローカル資格情報を読むためです
 - **ウィジェット拡張**: サンドボックスあり。通信せず App Group のスナップショットだけ表示します
-- 個人の私的利用向けです。配布用にサンドボックスを必須にする場合は、Cookie 手動運用や
+- 個人の私的利用向けです。配布用にサンドボックスを必須にする場合は、手動トークン運用や
   ファイル選択（security-scoped bookmark）など別設計が必要です
 
 ## 更新のしくみ
@@ -94,6 +123,7 @@ AppIntents が解決できず、ウィジェットがプレースホルダのま
 
 - 取得はメニューバーアプリに一本化（ウィジェット拡張は通信しません）
 - 既定は 5 分ごと。App Group 経由でウィジェットへ渡します
+- メニューで選んでいるサービスに加え、配置済みウィジェットのサービスもまとめて取ります
 - 「一時停止」で自動取得を止め、「今すぐ更新」は停止中でも取り直します
 
 ## 他の AI サービスを足すには
@@ -105,7 +135,7 @@ UI は `UsageSnapshot`（プラン・パーセント棒・従量）だけを描�
 
 ```
 project.yml                  XcodeGen のプロジェクト定義
-Shared/                      モデル・Cursor 取得・L10n・App Intents
+Shared/                      モデル・各プロバイダ・L10n・App Intents
 App/                         メニューバー常駐アプリ
 WidgetExtension/             ウィジェット本体（通信しない）
 Tests/                       単体テストと JSON フィクスチャ
@@ -119,16 +149,19 @@ scripts/                     sync-team / test / deploy-local / アイコン生�
 
 - `project.yml` の `bundleIdPrefix` / `PRODUCT_BUNDLE_IDENTIFIER`
 - `Shared/AppSettings.swift` の `Notification.Name` と `groupSuffix`
-- `Shared/CursorSession.swift` の Keychain service 名
+- `Shared/CursorSession.swift` / `ClaudeSession.swift` / `ChatGPTSession.swift` の Keychain service 名
 - `scripts/_common.sh` の `BUNDLE_ID`
 
 App Group は `$(DEVELOPMENT_TEAM).jp.shigeya.AIUsageWidget` です。
 
+`.app` のファイル名は濁点なし日本語の **AI使用量.app** です。英語表示名は `en.lproj` 側です。
+`WRAPPER_NAME` を英語にしないでください。
+
 ## 注意
 
-- `usage-summary` は非公式で、予告なく変わる可能性があります
+- 使用量 API は非公式で、予告なく変わる可能性があります
 - 個人の私的利用を想定しています
-- Cursor サポートへこのアプリの不具合を問い合わせないでください
+- Cursor / Anthropic / OpenAI サポートへこのアプリの不具合を問い合わせないでください
 
 ## ライセンス
 

@@ -34,8 +34,8 @@ targets:
         # CFBundleDisplayName が一致すること。英語名は en.lproj 側。
         # ウィジェットギャラリーの見出しは .app 名を使うことがあるので、
         # ファイル名自体は濁点なし日本語のままにする。
-        CFBundleName: Cursor使用量
-        CFBundleDisplayName: Cursor使用量
+        CFBundleName: AI使用量
+        CFBundleDisplayName: AI使用量
         LSHasLocalizedDisplayName: true
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -67,10 +67,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.shigeya.AIUsageWidget
         PRODUCT_NAME: AIUsageWidget
-        WRAPPER_NAME: Cursor使用量.app
+        WRAPPER_NAME: AI使用量.app
         # 実行ファイル名は ASCII のまま。一覧用の .app 名だけ日本語にする。
-        MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "1.1.0"
+        CURRENT_PROJECT_VERSION: "4"
         CODE_SIGN_STYLE: Automatic
         SWIFT_VERSION: "5.0"
         APP_GROUP_ID: $(DEVELOPMENT_TEAM).jp.shigeya.AIUsageWidget
@@ -87,8 +87,8 @@ targets:
     info:
       path: WidgetExtension/Info.plist
       properties:
-        CFBundleName: Cursor使用量
-        CFBundleDisplayName: Cursor使用量
+        CFBundleName: AI使用量
+        CFBundleDisplayName: AI使用量
         LSHasLocalizedDisplayName: true
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -116,8 +116,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.shigeya.AIUsageWidget.Widget
-        MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "1.1.0"
+        CURRENT_PROJECT_VERSION: "4"
         CODE_SIGN_STYLE: Automatic
         SWIFT_VERSION: "5.0"
         APP_GROUP_ID: $(DEVELOPMENT_TEAM).jp.shigeya.AIUsageWidget

@@ -6,6 +6,14 @@ struct CursorProvider: UsageProvider {
     var id: String { Self.id }
     var displayNameKey: String { "provider.cursor" }
     var dashboardURL: URL { URL(string: "https://cursor.com/dashboard?tab=usage")! }
+    var credentialNameKey: String { "menu.credentialName.cursor" }
+    var authNeededKey: String { "menu.authNeeded.cursor" }
+    var usingAppKey: String { "menu.credentialUsingApp.cursor" }
+
+    func hasAnyCredential() -> Bool { CursorSession.hasAnyCredential() }
+    func loadManualCredential() -> String? { CursorSession.loadManualCookie() }
+    func saveManualCredential(_ raw: String) throws { try CursorSession.saveManualCookie(raw) }
+    func clearManualCredential() { CursorSession.clearManualCookie() }
 
     private static let knownPrices: [String: String] = [
         "free": "$0",
@@ -133,24 +141,22 @@ struct CursorProvider: UsageProvider {
                 titleKey: "meter.cursorModels",
                 subtitleKey: "meter.cursorModels.subtitle",
                 percentUsed: autoPercent ?? 0,
-                accent: .primary
+                accent: .primary,
+                noteKey: "meter.cursorNote"
             ),
             UsageMeter(
                 id: "other-models",
                 titleKey: "meter.otherModels",
                 subtitleKey: nil,
                 percentUsed: apiPercent ?? 0,
-                accent: .secondary
+                accent: .secondary,
+                noteKey: "meter.otherNote"
             )
         ]
 
         let spend = mapSpend(summary)
 
-        var resetAt: Date?
-        if let end = summary.billingCycleEnd {
-            resetAt = ISO8601DateFormatter.fractional.date(from: end)
-                ?? ISO8601DateFormatter().date(from: end)
-        }
+        let resetAt = DateParsing.iso8601(summary.billingCycleEnd)
 
         return UsageSnapshot(
             providerID: id,
@@ -227,20 +233,6 @@ struct CursorProvider: UsageProvider {
     }
 }
 
-enum CursorAPIError: LocalizedError {
-    case unauthorized
-    case httpStatus(Int)
-    case decodeFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .unauthorized: return "unauthorized"
-        case .httpStatus(let code): return "HTTP \(code)"
-        case .decodeFailed: return "decode failed"
-        }
-    }
-}
-
 // MARK: - Wire types
 
 struct UsageSummaryResponse: Codable, Equatable {
@@ -298,12 +290,4 @@ struct AuthMeResponse: Codable {
 struct SandUsageStatusResponse: Codable, Equatable {
     var usagePercent: Double?
     var nextResetTimestampUtc: String?
-}
-
-private extension ISO8601DateFormatter {
-    static let fractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
 }

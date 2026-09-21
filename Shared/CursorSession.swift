@@ -242,34 +242,11 @@ enum CursorSession {
     }
 
     static func jwtSubject(_ jwt: String) throws -> String {
-        let segments = jwt.split(separator: ".")
-        guard segments.count >= 2 else { throw CursorSessionError.invalidToken }
-        var payload = String(segments[1])
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        while payload.count % 4 != 0 { payload.append("=") }
-        guard let data = Data(base64Encoded: payload),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let sub = json["sub"] as? String,
-              !sub.isEmpty
-        else {
-            throw CursorSessionError.invalidToken
-        }
-        return sub
+        try JWT.subject(jwt)
     }
 
     static func jwtExpiry(_ jwt: String) -> Date? {
-        let segments = jwt.split(separator: ".")
-        guard segments.count >= 2 else { return nil }
-        var payload = String(segments[1])
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        while payload.count % 4 != 0 { payload.append("=") }
-        guard let data = Data(base64Encoded: payload),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let exp = json["exp"] as? TimeInterval
-        else { return nil }
-        return Date(timeIntervalSince1970: exp)
+        JWT.expiry(jwt)
     }
 
     // MARK: - Keychain

@@ -27,7 +27,7 @@ osascript -e "tell application id \"$BUNDLE_ID\" to quit" 2>/dev/null || true
 pkill -f "MacOS/AIUsageWidget$" 2>/dev/null || true
 pkill -f "AIUsageWidgetExtension" 2>/dev/null || true
 # 旧表示名の .app が残っていれば消す
-rm -rf "$DEST/AI使用量.app" 2>/dev/null || true
+rm -rf "$DEST/Cursor使用量.app" 2>/dev/null || true
 # WidgetKit のプロセスが古い appex を掴んでいることがある
 killall AIUsageWidgetExtension 2>/dev/null || true
 killall chronod 2>/dev/null || true

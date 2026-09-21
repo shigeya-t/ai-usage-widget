@@ -18,6 +18,9 @@ enum L10n {
 
     private static let table: [String: [AppLanguage: String]] = [
         "provider.cursor": [.ja: "Cursor", .en: "Cursor"],
+        "provider.claude": [.ja: "Claude", .en: "Claude"],
+        "provider.chatgpt": [.ja: "ChatGPT", .en: "ChatGPT"],
+        "menu.provider": [.ja: "サービス", .en: "Service"],
         "plan.current": [.ja: "現在のプラン", .en: "CURRENT PLAN"],
         "plan.reset": [.ja: "使用量のリセット: %@", .en: "Usage limits reset on %@"],
         "plan.daysLeft": [.ja: "（残り%d日）", .en: " (%d days left)"],
@@ -35,6 +38,31 @@ enum L10n {
         "meter.grokBot": [.ja: "Grok Bot", .en: "Grok Bot"],
         "meter.grokBot.subtitle": [.ja: "週次の利用枠", .en: "Weekly usage"],
         "meter.percentUsed": [.ja: "%d%% 使用", .en: "%d%% used"],
+        "meter.fiveHour": [.ja: "5時間枠", .en: "5-hour"],
+        "meter.fiveHour.subtitle": [.ja: "セッションの利用枠", .en: "Session usage window"],
+        "meter.sevenDay": [.ja: "週次枠", .en: "Weekly"],
+        "meter.sevenDay.subtitle": [.ja: "すべてのモデル", .en: "All models"],
+        "meter.sevenDayOpus": [.ja: "週次 Opus", .en: "Weekly Opus"],
+        "meter.sevenDaySonnet": [.ja: "週次 Sonnet", .en: "Weekly Sonnet"],
+        "meter.window.primary": [.ja: "メイン枠", .en: "Primary"],
+        "meter.window.secondary": [.ja: "サブ枠", .en: "Secondary"],
+        "meter.window.fiveHour": [.ja: "5時間枠", .en: "5-hour"],
+        "meter.window.fiveHour.subtitle": [.ja: "短いリセット周期", .en: "Short reset window"],
+        "meter.window.daily": [.ja: "日次枠", .en: "Daily"],
+        "meter.window.weekly": [.ja: "週次枠", .en: "Weekly"],
+        "meter.window.weekly.subtitle": [.ja: "長いリセット周期", .en: "Longer reset window"],
+        "meter.window.monthly": [.ja: "月次枠", .en: "Monthly"],
+        "meter.codeReview": [.ja: "コードレビュー", .en: "Code Review"],
+        "spend.extraUsage": [.ja: "追加クレジット", .en: "Extra usage"],
+        "spend.extraUsage.note": [
+            .ja: "プラン枠を超えた追加使用です。",
+            .en: "Pay-as-you-go usage beyond the plan window."
+        ],
+        "spend.credits": [.ja: "クレジット", .en: "Credits"],
+        "spend.credits.note": [
+            .ja: "ChatGPT のクレジット残高です。",
+            .en: "ChatGPT credit balance."
+        ],
         "meter.cursorNote": [
             .ja: "上限を超えた追加使用は Other Models 枠またはオンデマンド課金に回ります。",
             .en: "Additional usage beyond limits consumes Other Models quota or on-demand spend."
@@ -67,10 +95,26 @@ enum L10n {
             .ja: "Cursor のセッションを取得できません。Cursor.app に再ログインするか、cursor.com の Cookie（WorkosCursorSessionToken など）の値だけを貼り付けてください。",
             .en: "Could not read a Cursor session. Re-sign in to Cursor.app, or paste a cursor.com cookie value (e.g. WorkosCursorSessionToken) below."
         ],
-        "menu.cookieSection": [.ja: "セッション Cookie", .en: "Session Cookie"],
+        "menu.authNeeded.cursor": [
+            .ja: "Cursor のセッションを取得できません。Cursor.app に再ログインするか、cursor.com の Cookie（WorkosCursorSessionToken など）の値だけを貼り付けてください。",
+            .en: "Could not read a Cursor session. Re-sign in to Cursor.app, or paste a cursor.com cookie value (e.g. WorkosCursorSessionToken) below."
+        ],
+        "menu.authNeeded.claude": [
+            .ja: "Claude のセッションを取得できません。Claude Code にログインするか、OAuth の access token を貼り付けてください。期限切れのときは Claude Code を一度起動してください（こちらからトークンは更新しません）。",
+            .en: "Could not read a Claude session. Sign in to Claude Code, or paste an OAuth access token. If it expired, open Claude Code once (this app does not refresh tokens)."
+        ],
+        "menu.authNeeded.chatgpt": [
+            .ja: "ChatGPT（Codex）のセッションを取得できません。Codex CLI にログインするか、access token を貼り付けてください。期限切れのときは Codex を一度起動してください（こちらからトークンは更新しません）。",
+            .en: "Could not read a ChatGPT (Codex) session. Sign in to the Codex CLI, or paste an access token. If it expired, open Codex once (this app does not refresh tokens)."
+        ],
+        "menu.cookieSection": [.ja: "認証", .en: "Authentication"],
         "menu.cookieSaved": [
             .ja: "手動 Cookie を保存済み。新しい値を貼ると上書きできます。",
             .en: "A manual cookie is saved. Paste a new value to replace it."
+        ],
+        "menu.credentialSaved": [
+            .ja: "手動の認証情報を保存済み。新しい値を貼ると上書きできます。",
+            .en: "A manual credential is saved. Paste a new value to replace it."
         ],
         "menu.cookieUsingApp": [
             .ja: "Cursor.app のセッションを利用中。必要なら Cookie の値を貼って上書きできます。",
@@ -79,6 +123,30 @@ enum L10n {
         "menu.cookieName": [
             .ja: "WorkosCursorSessionToken=",
             .en: "WorkosCursorSessionToken="
+        ],
+        "menu.credentialName.cursor": [
+            .ja: "WorkosCursorSessionToken=",
+            .en: "WorkosCursorSessionToken="
+        ],
+        "menu.credentialName.claude": [
+            .ja: "Bearer ",
+            .en: "Bearer "
+        ],
+        "menu.credentialName.chatgpt": [
+            .ja: "Bearer ",
+            .en: "Bearer "
+        ],
+        "menu.credentialUsingApp.cursor": [
+            .ja: "Cursor.app のセッションを利用中。必要なら Cookie の値を貼って上書きできます。",
+            .en: "Using Cursor.app session. Paste a cookie value below to override."
+        ],
+        "menu.credentialUsingApp.claude": [
+            .ja: "Claude Code のセッションを利用中。必要なら access token を貼って上書きできます。",
+            .en: "Using the Claude Code session. Paste an access token below to override."
+        ],
+        "menu.credentialUsingApp.chatgpt": [
+            .ja: "Codex CLI のセッションを利用中。必要なら access token を貼って上書きできます。",
+            .en: "Using the Codex CLI session. Paste an access token below to override."
         ],
         "menu.cookiePlaceholder": [
             .ja: "値を貼り付け",
@@ -100,8 +168,32 @@ enum L10n {
             .en: "Select a provider"
         ],
         "error.unauthorized": [
+            .ja: "認証に失敗しました。再ログインするかトークンを更新してください。",
+            .en: "Authentication failed. Re-sign in or update the token."
+        ],
+        "error.unauthorized.cursor": [
             .ja: "認証に失敗しました。Cursor に再ログインするか Cookie を更新してください。",
             .en: "Authentication failed. Re-sign in to Cursor or update the cookie."
+        ],
+        "error.unauthorized.claude": [
+            .ja: "認証に失敗しました。Claude Code に再ログインするか token を更新してください。",
+            .en: "Authentication failed. Re-sign in to Claude Code or update the token."
+        ],
+        "error.unauthorized.chatgpt": [
+            .ja: "認証に失敗しました。Codex に再ログインするか token を更新してください。",
+            .en: "Authentication failed. Re-sign in to Codex or update the token."
+        ],
+        "error.rateLimited": [
+            .ja: "使用量 API が混雑しています。しばらく待ってから更新してください。",
+            .en: "The usage API is rate-limited. Wait a bit, then refresh."
+        ],
+        "error.apiKeyMode.claude": [
+            .ja: "Claude が API キー運用です。プラン使用量は Claude Code のアカウントログインでのみ取れます。",
+            .en: "Claude is using an API key. Subscription usage is available only after a Claude Code account login."
+        ],
+        "error.apiKeyMode.chatgpt": [
+            .ja: "Codex が API キー運用です。ChatGPT のプラン使用量は Codex の ChatGPT ログインでのみ取れます。",
+            .en: "Codex is using an API key. ChatGPT plan usage is available only after a Codex ChatGPT login."
         ],
         "error.network": [
             .ja: "使用量の取得に失敗しました: %@",

@@ -37,6 +37,8 @@ struct UsageMeter: Codable, Equatable, Identifiable {
     /// 100 超も許容（オーバー使用）。API の生値（例: 0.37 = 0.37%）。
     var percentUsed: Double
     var accent: MeterAccent
+    /// 大ウィジェット用の注記。旧スナップショットには無い。
+    var noteKey: String? = nil
 
     enum MeterAccent: String, Codable {
         case primary

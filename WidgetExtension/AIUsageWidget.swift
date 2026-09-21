@@ -87,8 +87,8 @@ struct AIUsageWidget: Widget {
                     Color(nsColor: .windowBackgroundColor)
                 }
         }
-        .configurationDisplayName("Cursor使用量")
-        .description("Cursor のプランと使用量を表示します")
+        .configurationDisplayName("AI使用量")
+        .description("Cursor / Claude / ChatGPT のプランと使用量を表示します")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -120,7 +120,10 @@ struct AIUsageWidgetEntryView: View {
             snapshotContent(snapshot)
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.string("provider.cursor", language: lang))
+                Text(L10n.string(
+                    UsageProviderRegistry.provider(id: entry.providerID)?.displayNameKey ?? "provider.cursor",
+                    language: lang
+                ))
                     .font(.caption.weight(.semibold))
                 Label(L10n.string("widget.placeholder", language: lang), systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption2)
@@ -199,8 +202,7 @@ struct AIUsageWidgetEntryView: View {
                     .minimumScaleFactor(0.8)
             }
             usageBar(fraction: fraction, primary: meter.accent == .primary)
-            if isLarge {
-                let noteKey = meter.id == "cursor-models" ? "meter.cursorNote" : "meter.otherNote"
+            if isLarge, let noteKey = meter.noteKey {
                 Text(L10n.string(noteKey, language: lang))
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)

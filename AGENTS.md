@@ -28,7 +28,7 @@ swift scripts/generate-app-icon.swift
 ### 1. 必ず署名付きでビルドすること
 
 AppIntents は Team ID 付き署名が必要。無署名や adhoc だとウィジェットがプレースホルダのまま止まる。
-`.app` のファイル名は `Cursor使用量.app`（濁点なし）。実行ファイル名は ASCII の `AIUsageWidget` のまま。
+`.app` のファイル名は `AI使用量.app`（濁点なし）。実行ファイル名は ASCII の `AIUsageWidget` のまま。
 濁点付き日本語の `.app` 名は拡張が起動しない。英語OS向けの表示名は `en.lproj/InfoPlist.strings` と
 ウィジェットの `Localizable.strings`。`WRAPPER_NAME` を英語に変えないこと（Finder のローカライズ条件と
 ギャラリーが見出しにファイル名を使う場合の日本語表示が壊れる）。
@@ -36,7 +36,7 @@ AppIntents は Team ID 付き署名が必要。無署名や adhoc だとウィ�
 ### 2. `CONFIGURATION_BUILD_DIR` を独自パスに上書きしないこと
 
 標準の DerivedData にビルドし、配置は `scripts/deploy-local.sh` に任せる。同スクリプトは
-完成した `.app` を `build/Cursor使用量.app` にもコピーする（`build/` は gitignore）。
+完成した `.app` を `build/AI使用量.app` にもコピーする（`build/` は gitignore）。
 
 Team ID は手元の「Apple Development」証明書の OU から引く。複数あるときは
 `DEVELOPMENT_TEAM=XXXXXXXXXX ./scripts/deploy-local.sh`。
@@ -47,16 +47,19 @@ Team ID は手元の「Apple Development」証明書の OU から引く。複数
 Keychain も本番経路では触らない（Cookie 正規化と JSON マッピングの純関数を検証する）。
 
 - `CursorProviderMappingTests` — `Tests/Fixtures/` の usage-summary JSON
-- `CursorSessionTests` — Cookie / JWT の正規化
+- `ClaudeProviderMappingTests` / `ChatGPTProviderMappingTests` — OAuth usage JSON
+- `CursorSessionTests` / `ClaudeSessionTests` / `ChatGPTSessionTests` — Cookie / token の正規化
 - `L10nTests` — 日本語 / English キー
 
 ## データソース
 
-取得は `Shared/CursorProvider.swift` に集約する。エンドポイントは
-`GET https://cursor.com/api/usage-summary`（非公式）。認証は
-`WorkosCursorSessionToken` Cookie。
+取得はホストの各 `*Provider.swift` に集約する。ウィジェット拡張は通信しない。
 
-ホストはメニューバー常駐（サンドボックスなし。Cursor の `state.vscdb` を読むため）。
+- Cursor: `GET https://cursor.com/api/usage-summary`（非公式）。認証は `WorkosCursorSessionToken` Cookie。
+- Claude: `GET https://api.anthropic.com/api/oauth/usage`。Claude Code の OAuth access token（refresh しない）。
+- ChatGPT / Codex: `GET https://chatgpt.com/backend-api/wham/usage`（404 時は `.../codex/usage`）。Codex の access token（refresh しない）。
+
+ホストはメニューバー常駐（サンドボックスなし。Cursor の `state.vscdb` や Claude / Codex のローカル資格情報を読むため）。
 ウィジェット拡張はサンドボックスあり。App Group は Team ID 付き。
 
 ウィジェット拡張の `Provider.buildEntry()` から通信してはいけない。スナップショットは

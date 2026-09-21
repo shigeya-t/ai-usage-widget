@@ -1,0 +1,43 @@
+{
+  "plan_type": "plus",
+  "rate_limit": {
+    "primary_window": {
+      "used_percent": 10,
+      "limit_window_seconds": 18000,
+      "reset_at": 1770000000
+    },
+    "secondary_window": {
+      "used_percent": 3,
+      "limit_window_seconds": 604800,
+      "reset_at": 1770500000
+    }
+  },
+  "additional_rate_limits": [
+    {
+      "limit_name": "codex",
+      "limit_id": "codex",
+      "rate_limit": {
+        "primary_window": {
+          "used_percent": 55.5,
+          "limit_window_seconds": 18000,
+          "reset_at": 1770000000
+        },
+        "secondary_window": {
+          "used_percent": 12,
+          "limit_window_seconds": 604800
+        }
+      }
+    }
+  ],
+  "code_review_rate_limit": {
+    "primary_window": {
+      "used_percent": 2,
+      "limit_window_seconds": 86400
+    }
+  },
+  "credits": {
+    "has_credits": true,
+    "unlimited": false,
+    "balance": "12.34"
+  }
+}
