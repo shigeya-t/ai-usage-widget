@@ -5,12 +5,11 @@ struct ChatGPTProvider: UsageProvider {
 
     var id: String { Self.id }
     var displayNameKey: String { "provider.chatgpt" }
-    var dashboardURL: URL { URL(string: "https://chatgpt.com/codex")! }
+    var dashboardURL: URL { URL(string: "https://chatgpt.com/codex/settings/usage")! }
     var credentialNameKey: String { "menu.credentialName.chatgpt" }
     var authNeededKey: String { "menu.authNeeded.chatgpt" }
     var usingAppKey: String { "menu.credentialUsingApp.chatgpt" }
 
-    func hasAnyCredential() -> Bool { ChatGPTSession.hasAnyCredential() }
     func loadManualCredential() -> String? { ChatGPTSession.loadManualToken() }
     func saveManualCredential(_ raw: String) throws { try ChatGPTSession.saveManualToken(raw) }
     func clearManualCredential() { ChatGPTSession.clearManualToken() }
@@ -204,7 +203,7 @@ struct ChatGPTProvider: UsageProvider {
         case "team", "business": return "Business"
         case "enterprise": return "Enterprise"
         case "edu", "education": return "Edu"
-        case "": return "ChatGPT"
+        case "": return "Codex"
         default:
             let raw = membership ?? ""
             return raw.split(separator: "_").map { part in

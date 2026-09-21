@@ -10,15 +10,12 @@ struct ClaudeProvider: UsageProvider {
     var authNeededKey: String { "menu.authNeeded.claude" }
     var usingAppKey: String { "menu.credentialUsingApp.claude" }
 
-    func hasAnyCredential() -> Bool { ClaudeSession.hasAnyCredential() }
     func loadManualCredential() -> String? { ClaudeSession.loadManualToken() }
     func saveManualCredential(_ raw: String) throws { try ClaudeSession.saveManualToken(raw) }
     func clearManualCredential() { ClaudeSession.clearManualToken() }
 
     func fetchSnapshot() async throws -> UsageSnapshot {
-        let credential = try await MainActor.run {
-            try ClaudeSession.resolveCredential()
-        }
+        let credential = try await ClaudeSession.resolveCredential()
         switch credential {
         case .apiKey(let apiKey):
             return try await Self.fetchOfficialSnapshot(apiKey: apiKey)

@@ -60,6 +60,7 @@ struct Provider: AppIntentTimelineProvider {
         AppSettings.noteNeededProvider(entry.providerID)
         let stale = entry.snapshot.map { Date().timeIntervalSince($0.fetchedAt) > 10 * 60 } ?? true
         if entry.snapshot == nil || (stale && !entry.isPaused) {
+            // 5分ごとの自動更新。Keychain 拒否のやり直しは更新ボタンだけが要求する。
             AppSettings.notifyManualRefreshRequested()
         }
     }
@@ -88,7 +89,7 @@ struct AIUsageWidget: Widget {
                 }
         }
         .configurationDisplayName("AI使用量")
-        .description("Cursor / Claude / ChatGPT のプランと使用量を表示します")
+        .description("Cursor / Claude / Codex のプランと使用量を表示します")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

@@ -10,7 +10,6 @@ struct CursorProvider: UsageProvider {
     var authNeededKey: String { "menu.authNeeded.cursor" }
     var usingAppKey: String { "menu.credentialUsingApp.cursor" }
 
-    func hasAnyCredential() -> Bool { CursorSession.hasAnyCredential() }
     func loadManualCredential() -> String? { CursorSession.loadManualCookie() }
     func saveManualCredential(_ raw: String) throws { try CursorSession.saveManualCookie(raw) }
     func clearManualCredential() { CursorSession.clearManualCookie() }
@@ -60,6 +59,9 @@ struct CursorProvider: UsageProvider {
         }
         if http.statusCode == 401 || http.statusCode == 403 {
             throw CursorAPIError.unauthorized
+        }
+        if http.statusCode == 429 {
+            throw CursorAPIError.rateLimited
         }
         guard (200..<300).contains(http.statusCode) else {
             throw CursorAPIError.httpStatus(http.statusCode)

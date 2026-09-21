@@ -10,6 +10,17 @@ struct UsageSnapshot: Codable, Equatable {
     var fetchedAt: Date
     var errorMessage: String?
 
+    /// メーターがあれば最大％。API 費用だけなら金額。どちらも無ければ nil。
+    func menuBarValue(language: AppLanguage) -> String? {
+        if let worst = meters.map(\.displayPercent).max() {
+            return "\(worst)%"
+        }
+        if let spend {
+            return spend.formattedAmount(language: language, compact: true)
+        }
+        return nil
+    }
+
     static func empty(providerID: String, fetchedAt: Date = Date()) -> UsageSnapshot {
         UsageSnapshot(
             providerID: providerID,

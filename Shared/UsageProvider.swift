@@ -8,7 +8,6 @@ protocol UsageProvider: Sendable {
     var authNeededKey: String { get }
     var usingAppKey: String { get }
     func fetchSnapshot() async throws -> UsageSnapshot
-    func hasAnyCredential() -> Bool
     func loadManualCredential() -> String?
     func saveManualCredential(_ raw: String) throws
     func clearManualCredential()

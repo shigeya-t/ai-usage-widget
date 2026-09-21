@@ -1,3 +1,4 @@
+import SQLite3
 import XCTest
 
 final class CursorProviderMappingTests: XCTestCase {
@@ -147,6 +148,77 @@ final class CursorSessionTests: XCTestCase {
         let cookie = CursorSession.normalizeCookieValue(raw)
         XCTAssertEqual(cookie, "user_01ABC%3A%3AeyJ.part.sig")
     }
+
+    func testReadAccessTokenPrefersWALOverStaleMainFile() throws {
+        let url = try makeStateDatabase()
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
+        guard let db else { return }
+        defer { sqlite3_close(db) }
+        exec(db, "PRAGMA journal_mode=WAL;")
+        exec(db, "PRAGMA wal_autocheckpoint=0;")
+        exec(db, "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);")
+        exec(db, "INSERT INTO ItemTable (key, value) VALUES ('cursorAuth/accessToken', 'old-token');")
+        exec(db, "PRAGMA wal_checkpoint(TRUNCATE);")
+        exec(db, "UPDATE ItemTable SET value = 'new-token' WHERE key = 'cursorAuth/accessToken';")
+
+        XCTAssertEqual(tokenViaImmutable(url), "old-token")
+        XCTAssertEqual(try CursorSession.readAccessToken(from: url), "new-token")
+    }
+
+    func testMissingTokenDoesNotCopyStateDatabase() throws {
+        let url = try makeStateDatabase()
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
+        guard let db else { return }
+        exec(db, "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);")
+        sqlite3_close(db)
+
+        let temp = FileManager.default.temporaryDirectory
+        let before = try Set(FileManager.default.contentsOfDirectory(atPath: temp.path))
+        XCTAssertThrowsError(try CursorSession.readAccessToken(from: url)) { error in
+            XCTAssertEqual(error as? CursorSessionError, .tokenMissing)
+        }
+        let after = try Set(FileManager.default.contentsOfDirectory(atPath: temp.path))
+        let copies = after.subtracting(before).filter { $0.hasPrefix("aiusage-cursor-state-") }
+        XCTAssertTrue(copies.isEmpty, "signed-out state copied the database: \(copies)")
+    }
+
+    private func makeStateDatabase() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cursor-state-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        return dir.appendingPathComponent("state.vscdb")
+    }
+
+    private func exec(_ db: OpaquePointer, _ sql: String) {
+        XCTAssertEqual(sqlite3_exec(db, sql, nil, nil, nil), SQLITE_OK, sql)
+    }
+
+    private func tokenViaImmutable(_ url: URL) -> String? {
+        var db: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
+        guard sqlite3_open_v2("file://\(url.path)?immutable=1", &db, flags, nil) == SQLITE_OK, let db else {
+            return nil
+        }
+        defer { sqlite3_close(db) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken' LIMIT 1;",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK, let statement else {
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW, let cString = sqlite3_column_text(statement, 0) else {
+            return nil
+        }
+        return String(cString: cString)
+    }
 }
 
 final class L10nTests: XCTestCase {
@@ -186,13 +258,31 @@ final class L10nTests: XCTestCase {
             "widget.placeholder"
         ]
         for key in keys {
-            let ja = L10n.string(key, language: .ja)
-            let en = L10n.string(key, language: .en)
-            XCTAssertNotEqual(ja, key, "missing ja: \(key)")
-            XCTAssertNotEqual(en, key, "missing en: \(key)")
-            XCTAssertFalse(ja.isEmpty)
-            XCTAssertFalse(en.isEmpty)
+            assertLocalized(key)
         }
+    }
+
+    func testProviderKeysFollowTheRegistry() {
+        for provider in UsageProviderRegistry.all {
+            for key in [
+                provider.displayNameKey,
+                provider.credentialNameKey,
+                provider.authNeededKey,
+                provider.usingAppKey,
+                "error.unauthorized.\(provider.id)"
+            ] {
+                assertLocalized(key)
+            }
+        }
+    }
+
+    private func assertLocalized(_ key: String, file: StaticString = #filePath, line: UInt = #line) {
+        let ja = L10n.string(key, language: .ja)
+        let en = L10n.string(key, language: .en)
+        XCTAssertNotEqual(ja, key, "missing ja: \(key)", file: file, line: line)
+        XCTAssertNotEqual(en, key, "missing en: \(key)", file: file, line: line)
+        XCTAssertFalse(ja.isEmpty, file: file, line: line)
+        XCTAssertFalse(en.isEmpty, file: file, line: line)
     }
 
     func testPercentFormat() {
@@ -244,7 +334,12 @@ final class UsageProviderRegistryTests: XCTestCase {
         XCTAssertEqual(UsageProviderRegistry.all.map(\.id), ["cursor", "claude", "chatgpt"])
         XCTAssertEqual(UsageProviderRegistry.defaultProviderID, "cursor")
         XCTAssertEqual(UsageProviderRegistry.provider(id: "claude")?.displayNameKey, "provider.claude")
-        XCTAssertEqual(UsageProviderRegistry.provider(id: "chatgpt")?.dashboardURL.host, "chatgpt.com")
+        XCTAssertEqual(L10n.string("provider.chatgpt", language: .ja), "Codex")
+        XCTAssertEqual(L10n.string("provider.chatgpt", language: .en), "Codex")
+        XCTAssertEqual(
+            UsageProviderRegistry.provider(id: "chatgpt")?.dashboardURL.absoluteString,
+            "https://chatgpt.com/codex/settings/usage"
+        )
     }
 }
 
@@ -477,6 +572,100 @@ final class ClaudeSessionTests: XCTestCase {
         XCTAssertFalse(ClaudeSession.isAPIKey("sk-ant-oat-ci-token"))
         XCTAssertEqual(ClaudeSession.normalizeToken("Bearer sk-ant-oat-ci-token"), "sk-ant-oat-ci-token")
     }
+
+    func testExpiredLocalOAuthFallsBackToAdminKey() async throws {
+        let url = try writeTempJSON(#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-old","expiresAt":1}}"#)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let credential = try await ClaudeSession.resolveCredential(
+            manualToken: "",
+            environment: ["ANTHROPIC_ADMIN_KEY": "sk-ant-admin01-test"],
+            credentialFiles: [url],
+            includeKeychain: false
+        )
+        XCTAssertEqual(credential, .apiKey("sk-ant-admin01-test"))
+    }
+
+    func testExpiredLocalOAuthWithoutAPIKeyStaysExpired() async throws {
+        let url = try writeTempJSON(#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-old","expiresAt":1}}"#)
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+            _ = try await ClaudeSession.resolveCredential(
+                manualToken: "",
+                environment: [:],
+                credentialFiles: [url],
+                includeKeychain: false
+            )
+            XCTFail("expected tokenExpired")
+        } catch ClaudeSessionError.tokenExpired {
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
+    }
+
+    func testLoadLocalAPIKeyScansLaterCredentialFiles() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("claude-api-key-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let first = dir.appendingPathComponent(".credentials.json")
+        let second = dir.appendingPathComponent("credentials.json")
+        try Data(#"{}"#.utf8).write(to: first)
+        try Data(#"{"ANTHROPIC_API_KEY":"sk-ant-api03-from-second"}"#.utf8).write(to: second)
+        XCTAssertEqual(
+            ClaudeSession.loadLocalAPIKey(fileURLs: [first, second]),
+            "sk-ant-api03-from-second"
+        )
+    }
+
+    func testAPIKeyInLaterFileIsUsedWhenEarlierFileIsExpiredOAuth() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("claude-mixed-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let expired = dir.appendingPathComponent(".credentials.json")
+        let apiKey = dir.appendingPathComponent("credentials.json")
+        try Data(#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-old","expiresAt":1}}"#.utf8).write(to: expired)
+        try Data(#"{"ANTHROPIC_API_KEY":"sk-ant-api03-from-second"}"#.utf8).write(to: apiKey)
+        let credential = try await ClaudeSession.resolveCredential(
+            manualToken: "",
+            environment: [:],
+            credentialFiles: [expired, apiKey],
+            includeKeychain: false
+        )
+        XCTAssertEqual(credential, .apiKey("sk-ant-api03-from-second"))
+    }
+
+    func testKeychainDenialFallsBackToAdminKey() throws {
+        let credential = try ClaudeSession.selectCredential(
+            manualRaw: nil,
+            environmentOAuth: nil,
+            local: nil,
+            localError: .keychainDenied,
+            apiKeyFromFiles: nil,
+            environmentAPIKey: "sk-ant-admin01-test"
+        )
+        XCTAssertEqual(credential, .apiKey("sk-ant-admin01-test"))
+    }
+
+    func testKeychainDenialWithoutAPIKeyIsSurfaced() {
+        XCTAssertThrowsError(
+            try ClaudeSession.selectCredential(
+                manualRaw: nil,
+                environmentOAuth: nil,
+                local: nil,
+                localError: .keychainDenied,
+                apiKeyFromFiles: nil,
+                environmentAPIKey: nil
+            )
+        ) { error in
+            XCTAssertEqual(error as? ClaudeSessionError, .keychainDenied)
+        }
+    }
+
+    private func writeTempJSON(_ json: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("claude-session-\(UUID().uuidString).json")
+        try Data(json.utf8).write(to: url)
+        return url
+    }
 }
 
 final class ChatGPTProviderMappingTests: XCTestCase {
@@ -566,7 +755,7 @@ final class ChatGPTProviderMappingTests: XCTestCase {
         XCTAssertEqual(ChatGPTProvider.displayPlanName("go"), "Go")
         XCTAssertEqual(ChatGPTProvider.displayPlanName("free"), "Free")
         XCTAssertEqual(ChatGPTProvider.displayPlanName("pro_lite"), "Pro Lite")
-        XCTAssertEqual(ChatGPTProvider.displayPlanName(nil), "ChatGPT")
+        XCTAssertEqual(ChatGPTProvider.displayPlanName(nil), "Codex")
     }
 
     func testMapsOfficialOrganizationCosts() throws {
@@ -660,13 +849,142 @@ final class ChatGPTSessionTests: XCTestCase {
         XCTAssertFalse(ChatGPTSession.isExpired(fresh, now: Date(timeIntervalSince1970: 2_000)))
     }
 
+    func testLoggedOutAuthFallsBackToAdminKey() throws {
+        let url = try writeAuthJSON(#"{"tokens":null}"#)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let credential = try ChatGPTSession.resolveCredential(
+            manualToken: "",
+            codexFileURL: url,
+            environment: ["OPENAI_ADMIN_KEY": "sk-admin-test"]
+        )
+        XCTAssertEqual(credential, .apiKey("sk-admin-test"))
+    }
+
+    func testCorruptAuthFileFallsBackToAdminKey() throws {
+        let url = try writeAuthJSON("not-json{{{")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let credential = try ChatGPTSession.resolveCredential(
+            manualToken: "",
+            codexFileURL: url,
+            environment: ["OPENAI_ADMIN_KEY": "sk-admin-test"]
+        )
+        XCTAssertEqual(credential, .apiKey("sk-admin-test"))
+    }
+
+    func testCorruptAuthFileWithoutAdminKeySurfacesReadError() throws {
+        let url = try writeAuthJSON("not-json{{{")
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertThrowsError(
+            try ChatGPTSession.resolveCredential(
+                manualToken: "",
+                codexFileURL: url,
+                environment: [:]
+            )
+        ) { error in
+            XCTAssertFalse(error is ChatGPTSessionError)
+        }
+    }
+
+    func testLoggedOutAuthWithoutAdminKeyIsMissing() throws {
+        let url = try writeAuthJSON(#"{"tokens":null}"#)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertThrowsError(
+            try ChatGPTSession.resolveCredential(
+                manualToken: "",
+                codexFileURL: url,
+                environment: [:]
+            )
+        ) { error in
+            XCTAssertEqual(error as? ChatGPTSessionError, .tokenMissing)
+        }
+    }
+
+    func testExpiredCodexTokenFallsBackOnlyWhenAdminKeyExists() throws {
+        let expired = jwtPayload(["exp": 1_000])
+        let url = try writeAuthJSON(#"{"tokens":{"access_token":"\#(expired)"}}"#)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let fallback = try ChatGPTSession.resolveCredential(
+            manualToken: "",
+            codexFileURL: url,
+            environment: ["OPENAI_ADMIN_KEY": "sk-admin-test"]
+        )
+        XCTAssertEqual(fallback, .apiKey("sk-admin-test"))
+        XCTAssertThrowsError(
+            try ChatGPTSession.resolveCredential(
+                manualToken: "",
+                codexFileURL: url,
+                environment: [:]
+            )
+        ) { error in
+            XCTAssertEqual(error as? ChatGPTSessionError, .tokenExpired)
+        }
+    }
+
+    private func writeAuthJSON(_ json: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-auth-\(UUID().uuidString).json")
+        try Data(json.utf8).write(to: url)
+        return url
+    }
+
     private func jwtPayload(_ object: [String: Any]) -> String {
         let data = try! JSONSerialization.data(withJSONObject: object)
-        var payload = data.base64EncodedString()
+        let payload = data.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         return "eyJhbGciOiJub25lIn0.\(payload).sig"
+    }
+}
+
+final class BuildStampTests: XCTestCase {
+    func testJoinsVersionAndCommit() {
+        XCTAssertEqual(BuildStamp.label(version: "1.1.0", commit: "b4263b6c1a2f"), "1.1.0 · b4263b6c1a2f")
+        XCTAssertEqual(BuildStamp.label(version: "1.1.0", commit: "b4263b6c1a2f-dirty"), "1.1.0 · b4263b6c1a2f-dirty")
+    }
+
+    func testOmitsUnsetCommitPlaceholder() {
+        XCTAssertEqual(BuildStamp.label(version: "1.1.0", commit: "$(GIT_COMMIT_HASH)"), "1.1.0")
+        XCTAssertEqual(BuildStamp.label(version: "  ", commit: nil), nil)
+        XCTAssertEqual(BuildStamp.label(version: nil, commit: "abc1234"), "abc1234")
+    }
+}
+
+final class MenuBarTitleTests: XCTestCase {
+    func testShowsWorstMeterPercent() {
+        let snap = UsageSnapshot(
+            providerID: "cursor",
+            accountLabel: nil,
+            plan: PlanInfo(name: "Pro", priceText: nil, resetAt: nil),
+            meters: [
+                UsageMeter(id: "a", titleKey: "meter.cursorModels", subtitleKey: nil, percentUsed: 10, accent: .primary),
+                UsageMeter(id: "b", titleKey: "meter.otherModels", subtitleKey: nil, percentUsed: 40, accent: .secondary)
+            ],
+            spend: nil,
+            fetchedAt: Date(),
+            errorMessage: nil
+        )
+        XCTAssertEqual(snap.menuBarValue(language: .en), "40%")
+    }
+
+    func testShowsAPISpendWhenMetersAreEmpty() {
+        let snap = UsageSnapshot(
+            providerID: "claude",
+            accountLabel: nil,
+            plan: PlanInfo(name: "API", priceText: nil, resetAt: nil),
+            meters: [],
+            spend: SpendMeter(
+                id: "api-cost",
+                titleKey: "spend.apiCost",
+                noteKey: "spend.apiCost.note",
+                usedUSD: 12.75,
+                limitUSD: nil,
+                isUnlimited: true
+            ),
+            fetchedAt: Date(),
+            errorMessage: nil
+        )
+        XCTAssertEqual(snap.menuBarValue(language: .en), "$12.75/∞")
     }
 }
 

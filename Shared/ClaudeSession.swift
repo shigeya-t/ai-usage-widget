@@ -39,40 +39,76 @@ enum ClaudeSession {
     private static let manualService = "jp.shigeya.AIUsageWidget.claude"
     private static let manualAccount = "claudeAiOauthAccessToken"
 
-    static func resolveCredential() throws -> ClaudeCredential {
-        if let token = try oauthTokenFromRaw(loadManualToken()) {
+    static func resolveCredential(
+        manualToken: String? = nil,
+        environment: [String: String]? = nil,
+        credentialFiles: [URL]? = nil,
+        includeKeychain: Bool = true
+    ) async throws -> ClaudeCredential {
+        let env = environment ?? ProcessInfo.processInfo.environment
+        let files = credentialFiles ?? credentialFileURLs()
+        var local: ClaudeOAuthCreds?
+        var localError: ClaudeSessionError?
+        if let creds = credentialsFromFiles(files) {
+            local = creds
+        } else if includeKeychain {
+            do {
+                local = try await keychainOAuthCredentials()
+            } catch let error as ClaudeSessionError {
+                localError = error
+            }
+        }
+        return try selectCredential(
+            manualRaw: manualToken ?? loadManualToken(),
+            environmentOAuth: environmentOAuthToken(environment: env),
+            local: local,
+            localError: localError,
+            apiKeyFromFiles: loadLocalAPIKey(fileURLs: files),
+            environmentAPIKey: environmentAPIKey(environment: env)
+        )
+    }
+
+    /// 手動トークンと環境変数の OAuth を優先する。ローカル OAuth が期限切れ・欠落・Keychain 拒否でも、API キーがあればそちらを使う。キーが無ければ元のエラーを返す。
+    static func selectCredential(
+        manualRaw: String?,
+        environmentOAuth: String?,
+        local: ClaudeOAuthCreds?,
+        localError: ClaudeSessionError?,
+        apiKeyFromFiles: String?,
+        environmentAPIKey: String?
+    ) throws -> ClaudeCredential {
+        if let token = try oauthTokenFromRaw(manualRaw) {
             return token
         }
-        if let token = try oauthTokenFromRaw(environmentOAuthToken()) {
+        if let token = try oauthTokenFromRaw(environmentOAuth) {
             return token
         }
-        do {
-            if let creds = try loadLocalCredentials() {
-                if isAPIKey(creds.accessToken) {
-                    return .apiKey(creds.accessToken)
-                }
-                try validate(creds)
-                return .oauth(creds)
+        let fallbackKey = apiKeyFromFiles ?? environmentAPIKey
+        if let local {
+            if isAPIKey(local.accessToken) {
+                return .apiKey(local.accessToken)
             }
-        } catch ClaudeSessionError.apiKeyMode {
-            if let key = try loadLocalAPIKey() ?? environmentAPIKey() {
-                return .apiKey(key)
+            do {
+                try validate(local)
+                return .oauth(local)
+            } catch let error as ClaudeSessionError {
+                return try apiKeyOrRethrow(fallbackKey, error: error)
             }
-            throw ClaudeSessionError.apiKeyMode
         }
-        if let key = try loadLocalAPIKey() ?? environmentAPIKey() {
-            return .apiKey(key)
+        if let localError {
+            return try apiKeyOrRethrow(fallbackKey, error: localError)
+        }
+        if let fallbackKey, !fallbackKey.isEmpty {
+            return .apiKey(fallbackKey)
         }
         throw ClaudeSessionError.tokenMissing
     }
 
-    static func hasAnyCredential() -> Bool {
-        if let manual = loadManualToken(), !manual.isEmpty { return true }
-        if let token = environmentOAuthToken(), !token.isEmpty { return true }
-        if let creds = try? loadLocalCredentials(interactiveKeychain: false), !creds.accessToken.isEmpty { return true }
-        if let key = try? loadLocalAPIKey(interactiveKeychain: false), !key.isEmpty { return true }
-        if let key = environmentAPIKey(), !key.isEmpty { return true }
-        return false
+    private static func apiKeyOrRethrow(_ key: String?, error: ClaudeSessionError) throws -> ClaudeCredential {
+        if let key, !key.isEmpty {
+            return .apiKey(key)
+        }
+        throw error
     }
 
     private static func oauthTokenFromRaw(_ raw: String?) throws -> ClaudeCredential? {
@@ -84,8 +120,8 @@ enum ClaudeSession {
         return .oauth(ClaudeOAuthCreds(accessToken: token, expiresAt: JWT.expiry(token)?.timeIntervalSince1970))
     }
 
-    static func environmentOAuthToken() -> String? {
-        let env = ProcessInfo.processInfo.environment
+    static func environmentOAuthToken(environment: [String: String]? = nil) -> String? {
+        let env = environment ?? ProcessInfo.processInfo.environment
         guard let value = env["CLAUDE_CODE_OAUTH_TOKEN"] else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
@@ -157,8 +193,8 @@ enum ClaudeSession {
         return nil
     }
 
-    static func environmentAPIKey() -> String? {
-        let env = ProcessInfo.processInfo.environment
+    static func environmentAPIKey(environment: [String: String]? = nil) -> String? {
+        let env = environment ?? ProcessInfo.processInfo.environment
         for name in ["ANTHROPIC_ADMIN_KEY", "ANTHROPIC_ADMIN_API_KEY", "ANTHROPIC_API_KEY"] {
             if let value = env[name] {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -239,12 +275,6 @@ enum ClaudeSession {
 
     // MARK: - Local stores
 
-    static var defaultCredentialsURL: URL {
-        credentialFileURLs().first ?? CursorSession.realHomeDirectory
-            .appendingPathComponent(".claude")
-            .appendingPathComponent(".credentials.json")
-    }
-
     static func credentialFileURLs() -> [URL] {
         let home = CursorSession.realHomeDirectory
         var urls: [URL] = []
@@ -293,6 +323,19 @@ enum ClaudeSession {
         interactiveKeychain: Bool = true
     ) throws -> ClaudeOAuthCreds? {
         let files = fileURL.map { [$0] } ?? credentialFileURLs()
+        if let creds = credentialsFromFiles(files) {
+            return creds
+        }
+        // 対話プロンプトは `resolveCredential` 側。ここではキャッシュだけ見る。
+        guard let blob = try readCachedKeychainBlob(interactive: interactiveKeychain),
+              let data = blob.data(using: .utf8)
+        else {
+            return nil
+        }
+        return try parseCredentialsJSON(data)
+    }
+
+    private static func credentialsFromFiles(_ files: [URL]) -> ClaudeOAuthCreds? {
         for url in files {
             do {
                 if let creds = try readCredentialsFile(fileURL: url), !creds.accessToken.isEmpty {
@@ -304,12 +347,7 @@ enum ClaudeSession {
                 continue
             }
         }
-        guard let blob = try readClaudeCodeKeychainBlob(interactive: interactiveKeychain),
-              let data = blob.data(using: .utf8)
-        else {
-            return nil
-        }
-        return try parseCredentialsJSON(data)
+        return nil
     }
 
     /// テスト用。キーチェーンは見ない。
@@ -319,20 +357,14 @@ enum ClaudeSession {
         return try parseCredentialsJSON(data)
     }
 
-    static func loadLocalAPIKey(
-        fileURL: URL = defaultCredentialsURL,
-        interactiveKeychain: Bool = true
-    ) throws -> String? {
-        if let key = try readAPIKeyFile(fileURL: fileURL) {
-            return key
+    /// `credentialFileURLs()` を先頭から探す。Keychain の OAuth blob には API キーが無い。
+    static func loadLocalAPIKey(fileURLs: [URL]? = nil) -> String? {
+        for url in fileURLs ?? credentialFileURLs() {
+            if let key = try? readAPIKeyFile(fileURL: url), !key.isEmpty {
+                return key
+            }
         }
-        guard let blob = try readClaudeCodeKeychainBlob(interactive: interactiveKeychain),
-              let data = blob.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return nil
-        }
-        return parseAPIKey(from: json)
+        return nil
     }
 
     private static func readAPIKeyFile(fileURL: URL) throws -> String? {
@@ -358,49 +390,68 @@ enum ClaudeSession {
     private static let claudeCodeBlobLock = NSLock()
     private static var claudeCodeBlobCache: ClaudeCodeBlobCache = .unset
 
-    /// Claude Code の項目は ACL がこのアプリを含まない。ダイアログはメインスレッドで一度だけ出す。
-    private static func readClaudeCodeKeychainBlob(interactive: Bool) throws -> String? {
+    private static func keychainOAuthCredentials() async throws -> ClaudeOAuthCreds? {
+        guard let blob = try await readClaudeCodeKeychainBlob(),
+              let data = blob.data(using: .utf8)
+        else {
+            return nil
+        }
+        return try parseCredentialsJSON(data)
+    }
+
+    /// プロンプトは出さない。拒否キャッシュは `interactive` のときだけエラーにする。
+    private static func readCachedKeychainBlob(interactive: Bool) throws -> String? {
         claudeCodeBlobLock.lock()
+        defer { claudeCodeBlobLock.unlock() }
         switch claudeCodeBlobCache {
         case .blob(let blob):
-            claudeCodeBlobLock.unlock()
             return blob
-        case .missing:
-            claudeCodeBlobLock.unlock()
+        case .missing, .unset:
             return nil
         case .denied:
-            claudeCodeBlobLock.unlock()
             if interactive { throw ClaudeSessionError.keychainDenied }
             return nil
-        case .unset:
-            claudeCodeBlobLock.unlock()
         }
+    }
 
-        guard interactive else { return nil }
+    /// Claude Code の項目は ACL がこのアプリを含まない。`security` の待ちはメインスレッドの外で行う。
+    private static func readClaudeCodeKeychainBlob() async throws -> String? {
+        if let cached = try readCachedKeychainBlob(interactive: true) {
+            return cached
+        }
+        guard beginKeychainPrompt() else {
+            return try readCachedKeychainBlob(interactive: true)
+        }
+        return try storeKeychainPromptResult(await copyClaudeCodeKeychainBlob())
+    }
 
-        let result = copyClaudeCodeKeychainBlob()
+    private static func beginKeychainPrompt() -> Bool {
         claudeCodeBlobLock.lock()
+        defer { claudeCodeBlobLock.unlock() }
+        if case .unset = claudeCodeBlobCache { return true }
+        return false
+    }
+
+    private static func storeKeychainPromptResult(_ result: KeychainCopyResult) throws -> String? {
+        claudeCodeBlobLock.lock()
+        defer { claudeCodeBlobLock.unlock() }
         if case .blob(let existing) = claudeCodeBlobCache {
-            claudeCodeBlobLock.unlock()
             return existing
         }
         switch result {
         case .blob(let blob):
             claudeCodeBlobCache = .blob(blob)
-            claudeCodeBlobLock.unlock()
             return blob
         case .missing:
             claudeCodeBlobCache = .missing
-            claudeCodeBlobLock.unlock()
             return nil
         case .denied:
             claudeCodeBlobCache = .denied
-            claudeCodeBlobLock.unlock()
             throw ClaudeSessionError.keychainDenied
         }
     }
 
-    private static func copyClaudeCodeKeychainBlob() -> KeychainCopyResult {
+    private static func copyClaudeCodeKeychainBlob() async -> KeychainCopyResult {
         let user = NSUserName()
         var denied = false
 
@@ -411,15 +462,15 @@ enum ClaudeSession {
 
         // `/usr/bin/security` はターミナルと同じ経路。SecItem はこのアプリの署名だと項目が見えないことがある。
         for service in keychainServiceNames() {
-            if let blob = takeIfOAuth(copyViaSecurityCLI(service: service, account: user)) {
+            if let blob = takeIfOAuth(await copyViaSecurityCLI(service: service, account: user)) {
                 usageLogger.error("Claude Code credentials loaded via security CLI")
                 return .blob(blob)
             }
         }
 
-        prepareKeychainPrompt()
+        await onMain { prepareKeychainPrompt() }
         for service in keychainServiceNames() {
-            switch copySecretResult(service: service, account: user) {
+            switch await copySecretResult(service: service, account: user) {
             case .blob(let raw):
                 if let blob = takeIfOAuth(raw) { return .blob(blob) }
             case .denied:
@@ -429,9 +480,9 @@ enum ClaudeSession {
             }
         }
 
-        for item in listClaudeCodeKeychainItems() {
+        for item in await listClaudeCodeKeychainItems() {
             if item.account == user { continue }
-            switch copySecretResult(service: item.service, account: item.account) {
+            switch await copySecretResult(service: item.service, account: item.account) {
             case .denied:
                 denied = true
             case .blob(let raw):
@@ -446,7 +497,7 @@ enum ClaudeSession {
         return .missing
     }
 
-    private static func copySecretResult(service: String, account: String) -> KeychainCopyResult {
+    private static func copySecretResult(service: String, account: String) async -> KeychainCopyResult {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -456,26 +507,30 @@ enum ClaudeSession {
         if !account.isEmpty {
             query[kSecAttrAccount as String] = account
         }
-        switch copyMatchingClaudeCodeBlob(query) {
+        switch await copyMatchingClaudeCodeBlob(query) {
         case .blob(let raw):
             return .blob(raw)
         case .denied:
-            if let raw = copyViaSecurityCLI(service: service, account: account) {
+            if let raw = await copyViaSecurityCLI(service: service, account: account) {
                 return .blob(raw)
             }
             return .denied
         case .missing:
-            if let raw = copyViaSecurityCLI(service: service, account: account) {
+            if let raw = await copyViaSecurityCLI(service: service, account: account) {
                 return .blob(raw)
             }
             query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-            let synced = copyMatchingClaudeCodeBlob(query)
+            let synced = await copyMatchingClaudeCodeBlob(query)
             if case .blob(let raw) = synced { return .blob(raw) }
             return .missing
         }
     }
 
-    private static func listClaudeCodeKeychainItems() -> [(service: String, account: String)] {
+    private static func listClaudeCodeKeychainItems() async -> [(service: String, account: String)] {
+        await offMain { listClaudeCodeKeychainItemsSync() }
+    }
+
+    private static func listClaudeCodeKeychainItemsSync() -> [(service: String, account: String)] {
         var found: [(String, String)] = []
         for service in keychainServiceNames() {
             let query: [String: Any] = [
@@ -504,16 +559,24 @@ enum ClaudeSession {
     }
 
     /// `security find-generic-password -a $USER -s … -w` は SecItem より対話ダイアログが出やすい。
-    private static func copyViaSecurityCLI(service: String, account: String) -> String? {
+    /// 待ちはバックグラウンドで行い、その間メインアクターを解放する。
+    private static func copyViaSecurityCLI(service: String, account: String) async -> String? {
         guard Bundle.main.bundleIdentifier == "jp.shigeya.AIUsageWidget" else { return nil }
         guard !account.isEmpty else { return nil }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: copyViaSecurityCLIBlocking(service: service, account: account))
+            }
+        }
+    }
+
+    private static func copyViaSecurityCLIBlocking(service: String, account: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = ["find-generic-password", "-a", account, "-s", service, "-w"]
         let stdout = Pipe()
-        let stderr = Pipe()
         process.standardOutput = stdout
-        process.standardError = stderr
+        process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
         do {
             try process.run()
@@ -539,14 +602,29 @@ enum ClaudeSession {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private static func copyMatchingClaudeCodeBlob(_ query: [String: Any]) -> KeychainCopyResult {
-        if !Thread.isMainThread {
-            return DispatchQueue.main.sync { copyMatchingClaudeCodeBlobOnMain(query) }
+    /// `NSApp.activate` だけメインで行う。
+    private static func onMain<T>(_ work: @escaping () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                continuation.resume(returning: work())
+            }
         }
-        return copyMatchingClaudeCodeBlobOnMain(query)
     }
 
-    private static func copyMatchingClaudeCodeBlobOnMain(_ query: [String: Any]) -> KeychainCopyResult {
+    /// `SecItemCopyMatching` はダイアログのあいだ呼び出し側を塞ぐ。メインでは呼ばない。
+    private static func offMain<T>(_ work: @escaping () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: work())
+            }
+        }
+    }
+
+    private static func copyMatchingClaudeCodeBlob(_ query: [String: Any]) async -> KeychainCopyResult {
+        await offMain { copyMatchingClaudeCodeBlobSync(query) }
+    }
+
+    private static func copyMatchingClaudeCodeBlobSync(_ query: [String: Any]) -> KeychainCopyResult {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecSuccess, let data = item as? Data, let blob = String(data: data, encoding: .utf8) {

@@ -19,7 +19,7 @@ enum L10n {
     private static let table: [String: [AppLanguage: String]] = [
         "provider.cursor": [.ja: "Cursor", .en: "Cursor"],
         "provider.claude": [.ja: "Claude", .en: "Claude"],
-        "provider.chatgpt": [.ja: "ChatGPT", .en: "ChatGPT"],
+        "provider.chatgpt": [.ja: "Codex", .en: "Codex"],
         "menu.provider": [.ja: "サービス", .en: "Service"],
         "plan.current": [.ja: "現在のプラン", .en: "CURRENT PLAN"],
         "plan.reset": [.ja: "使用量のリセット: %@", .en: "Usage limits reset on %@"],
@@ -64,8 +64,8 @@ enum L10n {
         ],
         "spend.credits": [.ja: "クレジット", .en: "Credits"],
         "spend.credits.note": [
-            .ja: "Codex / ChatGPT の追加クレジット残高です。プラン枠ではありません。",
-            .en: "Extra usage-credit balance for Codex / ChatGPT, not the plan window."
+            .ja: "Codex の追加クレジット残高です。プラン枠ではありません。",
+            .en: "Extra usage-credit balance for Codex, not the plan window."
         ],
         "spend.credits.balance": [.ja: "残高 %@", .en: "%@ credits"],
         "spend.credits.balance.compact": [.ja: "残%@", .en: "%@ cr"],
@@ -115,8 +115,8 @@ enum L10n {
             .en: "No Claude Code login was found. The keychain prompt appears only when a Claude Code item exists. A Claude.app desktop login will not show it. Run claude in the terminal and /login, or paste an OAuth access token."
         ],
         "menu.authNeeded.chatgpt": [
-            .ja: "ChatGPT（Codex）のセッションを取得できません。Codex CLI にログインするか、access token を貼り付けてください。期限切れのときは Codex を一度起動してください（こちらからトークンは更新しません）。",
-            .en: "Could not read a ChatGPT (Codex) session. Sign in to the Codex CLI, or paste an access token. If it expired, open Codex once (this app does not refresh tokens)."
+            .ja: "Codex のセッションを取得できません。Codex CLI にログインするか、access token を貼り付けてください。期限切れのときは Codex を一度起動してください（こちらからトークンは更新しません）。",
+            .en: "Could not read a Codex session. Sign in to the Codex CLI, or paste an access token. If it expired, open Codex once (this app does not refresh tokens)."
         ],
         "menu.cookieSection": [.ja: "認証", .en: "Authentication"],
         "menu.cookieSaved": [
@@ -207,8 +207,8 @@ enum L10n {
             .en: "Claude Code keychain access was denied or is unreadable by this app. If a prompt appears, choose Always Allow. A Claude.app desktop login cannot be used instead."
         ],
         "error.apiKeyMode.chatgpt": [
-            .ja: "ChatGPT のプラン枠は Codex の ChatGPT ログインで取れます。API 消費は公式 Cost API 用の Admin キーが必要です。",
-            .en: "ChatGPT plan windows need a Codex ChatGPT login. API spend needs an Admin key for the official Cost API."
+            .ja: "Codex の利用枠は ChatGPT アカウントでログインした Codex CLI から取れます。API 消費は公式 Cost API 用の Admin キーが必要です。",
+            .en: "Codex plan windows need a Codex CLI login with a ChatGPT account. API spend needs an Admin key for the official Cost API."
         ],
         "error.network": [
             .ja: "使用量の取得に失敗しました: %@",

@@ -29,7 +29,7 @@ final class UsageModel: ObservableObject {
             hasManualCookie = selectedProvider?.loadManualCredential() != nil
             snapshot = AppSettings.snapshot(providerID: selectedProviderID)
             errorText = snapshot?.errorMessage
-            Task { await refresh(force: true) }
+            Task { await refresh() }
         }
     }
     @Published var language: AppLanguage {
@@ -49,6 +49,8 @@ final class UsageModel: ObservableObject {
     @Published private(set) var hasManualCookie = false
 
     private var timer: Timer?
+    private var refreshTask: Task<Void, Never>?
+    private var refreshAgain = false
 
     init() {
         selectedProviderID = AppSettings.selectedProviderID
@@ -65,7 +67,7 @@ final class UsageModel: ObservableObject {
         openPendingDashboard()
         if !isPaused {
             startTimer()
-            Task { await refresh(force: true) }
+            Task { await refresh() }
         }
     }
 
@@ -92,7 +94,7 @@ final class UsageModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.refresh(force: true) }
+            Task { @MainActor in await self?.refresh() }
         }
     }
 
@@ -130,12 +132,11 @@ final class UsageModel: ObservableObject {
 
     var menuBarTitle: String {
         if isPaused { return L10n.string("menu.paused", language: language) }
-        guard let snapshot else {
-            let key = selectedProvider?.displayNameKey ?? "provider.cursor"
-            return L10n.string(key, language: language)
+        let providerKey = selectedProvider?.displayNameKey ?? "provider.cursor"
+        guard let snapshot, let value = snapshot.menuBarValue(language: language) else {
+            return L10n.string(providerKey, language: language)
         }
-        let worst = snapshot.meters.map(\.displayPercent).max() ?? 0
-        return "\(worst)%"
+        return value
     }
 
     var menuBarSymbol: String {
@@ -158,13 +159,41 @@ final class UsageModel: ObservableObject {
         isPaused = false
         if propagate { AppSettings.isPaused = false }
         startTimer()
-        Task { await refresh(force: true) }
+        Task { await refresh() }
     }
 
-    func refresh(force: Bool = false) async {
-        isRefreshing = true
-        defer { isRefreshing = false }
-        if force {
+    func refreshFromUser() async {
+        AppSettings.requestKeychainRetry()
+        await refresh()
+    }
+
+    func refresh() async {
+        if refreshTask != nil {
+            refreshAgain = true
+            await refreshTask?.value
+            return
+        }
+        let task = Task { @MainActor in
+            self.isRefreshing = true
+            defer {
+                self.isRefreshing = false
+                // 完了より先に外す。所有者が再開する前の要求が、終わったタスクを掴まないようにする。
+                self.refreshTask = nil
+            }
+            repeat {
+                self.refreshAgain = false
+                await self.performRefresh()
+            } while self.refreshAgain
+        }
+        refreshTask = task
+        await task.value
+        if refreshAgain {
+            await refresh()
+        }
+    }
+
+    private func performRefresh() async {
+        if AppSettings.consumeKeychainRetry() {
             ClaudeSession.retryKeychainAccess()
         }
 
@@ -202,12 +231,17 @@ final class UsageModel: ObservableObject {
             if seen.insert(id).inserted { ids.append(id) }
         }
         append(selectedProviderID)
-        for id in AppSettings.neededProviders { append(id) }
-        for id in await widgetConfiguredProviderIDs() { append(id) }
+        if let configured = await widgetConfiguredProviderIDs() {
+            AppSettings.setNeededProviders(configured)
+            for id in configured { append(id) }
+        } else {
+            for id in AppSettings.neededProviders { append(id) }
+        }
         return ids
     }
 
-    private func widgetConfiguredProviderIDs() async -> [String] {
+    /// nil は問い合わせ失敗。空配列はウィジェットが無い。
+    private func widgetConfiguredProviderIDs() async -> [String]? {
         let infos: [WidgetInfo]
         do {
             infos = try await withCheckedThrowingContinuation { continuation in
@@ -215,7 +249,7 @@ final class UsageModel: ObservableObject {
             }
         } catch {
             usageLogger.error("getCurrentConfigurations に失敗: \(String(describing: error), privacy: .public)")
-            return []
+            return nil
         }
         var ids: [String] = []
         for info in infos {
@@ -234,7 +268,7 @@ final class UsageModel: ObservableObject {
             cookieDraft = ""
             hasManualCookie = true
             errorText = nil
-            Task { await refresh(force: true) }
+            Task { await refresh() }
         } catch {
             errorText = L10n.string(provider.authNeededKey, language: language)
         }
@@ -244,7 +278,7 @@ final class UsageModel: ObservableObject {
         selectedProvider?.clearManualCredential()
         hasManualCookie = false
         cookieDraft = ""
-        Task { await refresh(force: true) }
+        Task { await refresh() }
     }
 
     func openDashboard() {
@@ -490,12 +524,19 @@ struct MenuContent: View {
                     if model.isPaused { model.resume() } else { model.pause() }
                 }
                 Button(L10n.string("menu.refresh", language: lang)) {
-                    Task { await model.refresh(force: true) }
+                    Task { await model.refreshFromUser() }
                 }
                 Spacer(minLength: 8)
                 Button(L10n.string("menu.quit", language: lang)) {
                     NSApplication.shared.terminate(nil)
                 }
+            }
+            if let build = BuildStamp.label(in: .main) {
+                Text(build)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .font(.caption)
