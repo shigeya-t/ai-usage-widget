@@ -70,6 +70,7 @@ enum AppSettings {
         static let selectedProviderID = "selectedProviderID"
         static let neededProviders = "neededProviders"
         static let pendingDashboardURL = "pendingDashboardURL"
+        static let retryKeychain = "retryKeychain"
         static func snapshot(_ providerID: String) -> String { "snapshot.\(providerID)" }
     }
 
@@ -123,6 +124,19 @@ enum AppSettings {
             userInfo: nil,
             deliverImmediately: true
         )
+    }
+
+    /// ウィジェットの更新ボタンからホストへ渡す。自動の timeline 更新では立てない。
+    static func requestKeychainRetry() {
+        defaults.set(true, forKey: Keys.retryKeychain)
+        defaults.synchronize()
+    }
+
+    static func consumeKeychainRetry() -> Bool {
+        guard defaults.bool(forKey: Keys.retryKeychain) else { return false }
+        defaults.set(false, forKey: Keys.retryKeychain)
+        defaults.synchronize()
+        return true
     }
 
     static func notifyLanguageChanged() {
@@ -225,6 +239,16 @@ enum AppSettings {
         guard !ids.contains(providerID) else { return }
         ids.append(providerID)
         defaults.set(ids, forKey: Keys.neededProviders)
+        defaults.synchronize()
+    }
+
+    /// 今置いてあるウィジェットのプロバイダで置き換える。外したものは残さない。
+    static func setNeededProviders(_ ids: [String]) {
+        var unique: [String] = []
+        for id in ids where !unique.contains(id) {
+            unique.append(id)
+        }
+        defaults.set(unique, forKey: Keys.neededProviders)
         defaults.synchronize()
     }
 }

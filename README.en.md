@@ -119,8 +119,11 @@ If a file has both a ChatGPT login and an API key, plan windows win. If the toke
 
 ### Permissions
 
-- **Host (menu bar):** no App Sandbox, so it can read Cursor / Claude Code / Codex local credentials
-- **Widget extension:** sandboxed; no networking; displays App Group snapshots only
+- **Host (menu bar):** App Sandbox is off on purpose. A sandboxed host cannot read Cursor’s `state.vscdb`. This process therefore:
+  - reads Cursor’s `state.vscdb`, Claude Code credential files, and Codex `auth.json`
+  - reads the Claude Code keychain via `/usr/bin/security` (a prompt may appear)
+  - sends those tokens to `cursor.com`, `api.anthropic.com`, and `chatgpt.com` / `api.openai.com` to fetch usage
+- **Widget extension:** sandboxed, without the network client entitlement. It does not make requests; it only shows App Group snapshots
 - Intended for personal, private use. Shipping with a mandatory host sandbox would need
   a different design (manual tokens only, or a security-scoped bookmark)
 

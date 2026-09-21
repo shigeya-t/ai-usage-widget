@@ -19,7 +19,7 @@ OUTPUT=$(run_xcodebuild test 2>&1)
 STATUS=$?
 set -e
 
-echo "$OUTPUT" | grep -E "error:|warning:|failed|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)" | sort -u
+echo "$OUTPUT" | grep -E "error:|warning:|failed|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)" | sort -u || true
 
 if [[ $STATUS -ne 0 ]]; then
   echo

@@ -34,33 +34,40 @@ enum ChatGPTSession {
     private static let manualService = "jp.shigeya.AIUsageWidget.chatgpt"
     private static let manualAccount = "ChatGPTAccessToken"
 
-    static func resolveCredential() throws -> ChatGPTCredential {
-        if let manual = loadManualToken(), !manual.isEmpty {
+    static func resolveCredential(
+        manualToken: String? = nil,
+        codexFileURL: URL? = nil,
+        environment: [String: String]? = nil
+    ) throws -> ChatGPTCredential {
+        let envKey = environmentAPIKey(environment: environment)
+        if let manual = manualToken ?? loadManualToken(), !manual.isEmpty {
             let token = normalizeToken(manual)
             guard !token.isEmpty else { throw ChatGPTSessionError.invalidToken }
             if isAPIKey(token) { return .apiKey(token) }
             if isExpired(token) { throw ChatGPTSessionError.tokenExpired }
             return .chatgpt(authFromAccessToken(token))
         }
-        if let credential = try readCodexCredential() {
-            return try validated(credential)
+        do {
+            if let credential = try readCodexCredential(fileURL: codexFileURL ?? defaultAuthURL) {
+                return try validated(credential)
+            }
+        } catch let error as ChatGPTSessionError {
+            switch error {
+            case .tokenMissing:
+                break
+            case .tokenExpired, .invalidToken, .apiKeyMode:
+                if let envKey { return .apiKey(envKey) }
+                throw error
+            }
+        } catch {
+            // 中途書き込みなどで auth.json が壊れている。CocoaError / NSError は上の catch に入らない。
+            if let envKey { return .apiKey(envKey) }
+            throw error
         }
-        if let key = environmentAPIKey() {
-            return .apiKey(key)
+        if let envKey {
+            return .apiKey(envKey)
         }
         throw ChatGPTSessionError.tokenMissing
-    }
-
-    static func hasAnyCredential() -> Bool {
-        if let manual = loadManualToken(), !manual.isEmpty { return true }
-        if let credential = try? readCodexCredential() {
-            switch credential {
-            case .chatgpt(let auth): return !auth.accessToken.isEmpty
-            case .apiKey(let key): return !key.isEmpty
-            }
-        }
-        if let key = environmentAPIKey(), !key.isEmpty { return true }
-        return false
     }
 
     static func saveManualToken(_ raw: String) throws {
@@ -117,8 +124,8 @@ enum ChatGPTSession {
         return nil
     }
 
-    static func environmentAPIKey() -> String? {
-        let env = ProcessInfo.processInfo.environment
+    static func environmentAPIKey(environment: [String: String]? = nil) -> String? {
+        let env = environment ?? ProcessInfo.processInfo.environment
         for name in ["OPENAI_ADMIN_KEY", "OPENAI_API_KEY"] {
             if let value = env[name] {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)

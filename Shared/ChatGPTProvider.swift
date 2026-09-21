@@ -10,7 +10,6 @@ struct ChatGPTProvider: UsageProvider {
     var authNeededKey: String { "menu.authNeeded.chatgpt" }
     var usingAppKey: String { "menu.credentialUsingApp.chatgpt" }
 
-    func hasAnyCredential() -> Bool { ChatGPTSession.hasAnyCredential() }
     func loadManualCredential() -> String? { ChatGPTSession.loadManualToken() }
     func saveManualCredential(_ raw: String) throws { try ChatGPTSession.saveManualToken(raw) }
     func clearManualCredential() { ChatGPTSession.clearManualToken() }

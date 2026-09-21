@@ -60,6 +60,7 @@ struct Provider: AppIntentTimelineProvider {
         AppSettings.noteNeededProvider(entry.providerID)
         let stale = entry.snapshot.map { Date().timeIntervalSince($0.fetchedAt) > 10 * 60 } ?? true
         if entry.snapshot == nil || (stale && !entry.isPaused) {
+            // 5分ごとの自動更新。Keychain 拒否のやり直しは更新ボタンだけが要求する。
             AppSettings.notifyManualRefreshRequested()
         }
     }

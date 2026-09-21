@@ -63,7 +63,8 @@ Keychain も本番経路では触らない（Cookie 正規化と JSON マッピ�
 - OpenAI API: 公式 `GET https://api.openai.com/v1/organization/costs`（Admin / API キー）。
 
 ホストはメニューバー常駐（サンドボックスなし。Cursor の `state.vscdb` や Claude / Codex のローカル資格情報を読むため）。
-ウィジェット拡張はサンドボックスあり。App Group は Team ID 付き。
+サンドボックスを外した結果、このプロセスは3社のローカル資格情報を読み、Claude Code では `/usr/bin/security` を起動し、読んだトークンを各使用量エンドポイントへ送る。
+ウィジェット拡張はサンドボックスありで、`network.client` は付けない。App Group は Team ID 付き。
 
 ウィジェット拡張の `Provider.buildEntry()` から通信してはいけない。スナップショットは
 App が App Group に書いたものを読むだけ。

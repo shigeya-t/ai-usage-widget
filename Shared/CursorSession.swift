@@ -3,7 +3,7 @@ import Security
 import SQLite3
 import Darwin
 
-enum CursorSessionError: LocalizedError {
+enum CursorSessionError: LocalizedError, Equatable {
     case databaseMissing
     case databaseOpenFailed
     case tokenMissing
@@ -47,11 +47,6 @@ enum CursorSession {
             return normalizeCookieValue(manual)
         }
         return try cookieFromAppState()
-    }
-
-    static func hasAnyCredential() -> Bool {
-        if let manual = loadManualCookie(), !manual.isEmpty { return true }
-        return (try? cookieFromAppState()) != nil
     }
 
     static func saveManualCookie(_ raw: String) throws {
@@ -103,17 +98,45 @@ enum CursorSession {
             throw CursorSessionError.databaseMissing
         }
 
-        // サンドボックスの temporary-exception は read-only。
-        // WAL 付き DB を通常の READONLY で開くと -shm へ書けず CANTOPEN になることがある。
-        // immutable=1（＋ URI のスペースを正しくエンコード）でメイン DB だけ読む。
-        if let token = try? readAccessTokenOpening(dbURL: dbURL, immutable: true) {
+        // immutable=1 は WAL を見ない。トークン更新の直後は新しい JWT が WAL にしかなく、
+        // 先に immutable が成功すると期限切れの古いトークンを掴む。
+        // 通常の読みが開けたときの tokenMissing はサインアウトなので、ここで終える。
+        // 開けないときだけ immutable、それも無理なときだけコピーする（54MB 級の DB を毎分コピーしない）。
+        switch openAccessToken(dbURL: dbURL, immutable: false) {
+        case .token(let token):
             return token
+        case .missing:
+            throw CursorSessionError.tokenMissing
+        case .openFailed:
+            break
         }
-        if let token = try? readAccessTokenOpening(dbURL: dbURL, immutable: false) {
+
+        switch openAccessToken(dbURL: dbURL, immutable: true) {
+        case .token(let token):
             return token
+        case .missing:
+            throw CursorSessionError.tokenMissing
+        case .openFailed:
+            break
         }
-        // 最後の手段: コンテナ内へコピーしてから開く（WAL を無視）
+
         return try readAccessTokenViaTempCopy(dbURL: dbURL)
+    }
+
+    private enum AccessTokenOpen {
+        case token(String)
+        case missing
+        case openFailed
+    }
+
+    private static func openAccessToken(dbURL: URL, immutable: Bool) -> AccessTokenOpen {
+        do {
+            return .token(try readAccessTokenOpening(dbURL: dbURL, immutable: immutable))
+        } catch CursorSessionError.tokenMissing {
+            return .missing
+        } catch {
+            return .openFailed
+        }
     }
 
     private static func readAccessTokenViaTempCopy(dbURL: URL) throws -> String {

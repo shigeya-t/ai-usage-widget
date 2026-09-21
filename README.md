@@ -116,8 +116,11 @@ Codex に ChatGPT アカウントでログインしていると Codex の利用�
 
 ### 権限まわり
 
-- **ホスト（メニューバー）**: App Sandbox なし。Cursor / Claude Code / Codex のローカル資格情報を読むためです
-- **ウィジェット拡張**: サンドボックスあり。通信せず App Group のスナップショットだけ表示します
+- **ホスト（メニューバー）**: App Sandbox なし。これは意図した選択です。サンドボックスのままだと Cursor の `state.vscdb` を読めません。その結果、このプロセスは次をします。
+  - Cursor の `state.vscdb`、Claude Code の資格情報ファイル、Codex の `auth.json` を読む
+  - Claude Code の Keychain を `/usr/bin/security` で読む（ダイアログが出ることがあります）
+  - 読んだトークンを `cursor.com`、`api.anthropic.com`、`chatgpt.com` / `api.openai.com` へ送って使用量を取得する
+- **ウィジェット拡張**: サンドボックスあり。ネットワーク権限は付けていません。通信せず、App Group のスナップショットだけを表示します
 - 個人の私的利用向けです。配布用にサンドボックスを必須にする場合は、手動トークン運用や
   ファイル選択（security-scoped bookmark）など別設計が必要です
 

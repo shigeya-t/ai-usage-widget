@@ -109,8 +109,8 @@ targets:
     entitlements:
       path: WidgetExtension/AIUsageWidgetExtension.entitlements
       properties:
+        # 拡張は通信しない。network.client を付けると、その不変条件をサンドボックスが守れなくなる。
         com.apple.security.app-sandbox: true
-        com.apple.security.network.client: true
         com.apple.security.application-groups:
           - $(APP_GROUP_ID)
     settings:

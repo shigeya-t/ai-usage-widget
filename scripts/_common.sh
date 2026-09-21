@@ -72,9 +72,12 @@ run_xcodebuild() {
 
 built_app_path() {
   local dir
+  # 失敗しても非0で抜けない。set -e 下の APP=$(built_app_path) が案内の前に止まらないようにする。
   dir=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration "$CONFIGURATION" -showBuildSettings 2>/dev/null \
-    | sed -n 's/^[[:space:]]*TARGET_BUILD_DIR = //p' | head -1)
-  [[ -n "$dir" && -d "$dir/$APP_NAME" ]] && echo "$dir/$APP_NAME"
+    | sed -n 's/^[[:space:]]*TARGET_BUILD_DIR = //p' | head -1) || true
+  if [[ -n "$dir" && -d "$dir/$APP_NAME" ]]; then
+    echo "$dir/$APP_NAME"
+  fi
 }
 
 copy_app_to_repo_build() {

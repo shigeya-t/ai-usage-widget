@@ -22,6 +22,7 @@ struct RefreshUsageIntent: AppIntent {
         if let providerID, !providerID.isEmpty {
             AppSettings.noteNeededProvider(providerID)
         }
+        AppSettings.requestKeychainRetry()
         AppSettings.notifyManualRefreshRequested()
         WidgetReloader.reload()
         return .result()
