@@ -5,7 +5,7 @@ struct ChatGPTProvider: UsageProvider {
 
     var id: String { Self.id }
     var displayNameKey: String { "provider.chatgpt" }
-    var dashboardURL: URL { URL(string: "https://chatgpt.com/codex")! }
+    var dashboardURL: URL { URL(string: "https://chatgpt.com/codex/settings/usage")! }
     var credentialNameKey: String { "menu.credentialName.chatgpt" }
     var authNeededKey: String { "menu.authNeeded.chatgpt" }
     var usingAppKey: String { "menu.credentialUsingApp.chatgpt" }

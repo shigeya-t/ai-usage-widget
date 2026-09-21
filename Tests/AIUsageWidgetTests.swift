@@ -334,7 +334,10 @@ final class UsageProviderRegistryTests: XCTestCase {
         XCTAssertEqual(UsageProviderRegistry.all.map(\.id), ["cursor", "claude", "chatgpt"])
         XCTAssertEqual(UsageProviderRegistry.defaultProviderID, "cursor")
         XCTAssertEqual(UsageProviderRegistry.provider(id: "claude")?.displayNameKey, "provider.claude")
-        XCTAssertEqual(UsageProviderRegistry.provider(id: "chatgpt")?.dashboardURL.host, "chatgpt.com")
+        XCTAssertEqual(
+            UsageProviderRegistry.provider(id: "chatgpt")?.dashboardURL.absoluteString,
+            "https://chatgpt.com/codex/settings/usage"
+        )
     }
 }
 
