@@ -334,6 +334,8 @@ final class UsageProviderRegistryTests: XCTestCase {
         XCTAssertEqual(UsageProviderRegistry.all.map(\.id), ["cursor", "claude", "chatgpt"])
         XCTAssertEqual(UsageProviderRegistry.defaultProviderID, "cursor")
         XCTAssertEqual(UsageProviderRegistry.provider(id: "claude")?.displayNameKey, "provider.claude")
+        XCTAssertEqual(L10n.string("provider.chatgpt", language: .ja), "Codex")
+        XCTAssertEqual(L10n.string("provider.chatgpt", language: .en), "Codex")
         XCTAssertEqual(
             UsageProviderRegistry.provider(id: "chatgpt")?.dashboardURL.absoluteString,
             "https://chatgpt.com/codex/settings/usage"
@@ -753,7 +755,7 @@ final class ChatGPTProviderMappingTests: XCTestCase {
         XCTAssertEqual(ChatGPTProvider.displayPlanName("go"), "Go")
         XCTAssertEqual(ChatGPTProvider.displayPlanName("free"), "Free")
         XCTAssertEqual(ChatGPTProvider.displayPlanName("pro_lite"), "Pro Lite")
-        XCTAssertEqual(ChatGPTProvider.displayPlanName(nil), "ChatGPT")
+        XCTAssertEqual(ChatGPTProvider.displayPlanName(nil), "Codex")
     }
 
     func testMapsOfficialOrganizationCosts() throws {

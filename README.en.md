@@ -3,7 +3,7 @@
 [日本語](README.md)
 
 A macOS menu bar app and WidgetKit widget that shows your Cursor, Claude, and
-ChatGPT (Codex) plan and usage at a glance.
+Codex plan and usage at a glance.
 
 The architecture matches [Subway Widget](https://github.com/shigeya-t/subway-widget):
 **the host app fetches data; the widget extension only displays snapshots.**
@@ -22,11 +22,11 @@ notification when remaining credits run low. It was easy to burn through the
 included pool and drift deep into on-demand spend before noticing.
 
 This app keeps plan quotas visible in the menu bar and on the desktop, without
-opening settings every time. Claude and ChatGPT (Codex) use the same surface.
+opening settings every time. Claude and Codex use the same surface.
 
 ## Features
 
-- Switch between Cursor, Claude, and ChatGPT
+- Switch between Cursor, Claude, and Codex
 - Plan & Usage–style view (plan name, reset date, percent meters, spend)
 - Menu bar stay-resident app (no Dock icon) plus small / medium / large widgets
 - Explicit Japanese / English switch shared by the app and widgets
@@ -41,7 +41,7 @@ opening settings every time. Claude and ChatGPT (Codex) use the same surface.
 - A local login for the service you want to watch:
   - Cursor: Cursor.app
   - Claude: Claude Code
-  - ChatGPT (Codex): Codex CLI
+  - Codex: Codex CLI (ChatGPT account)
 
 ## Build and install
 
@@ -104,7 +104,7 @@ A Claude.app desktop login is not used. A Claude Code account login shows the 5-
 The Admin API is unavailable for many individual accounts. If the token expired, open Claude Code once (this app does
 not refresh tokens).
 
-### ChatGPT (Codex)
+### Codex
 
 Plan windows (ChatGPT login): `GET https://chatgpt.com/backend-api/wham/usage`
 (falls back to `.../codex/usage` on 404)

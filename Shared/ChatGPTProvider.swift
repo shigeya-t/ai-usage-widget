@@ -203,7 +203,7 @@ struct ChatGPTProvider: UsageProvider {
         case "team", "business": return "Business"
         case "enterprise": return "Enterprise"
         case "edu", "education": return "Edu"
-        case "": return "ChatGPT"
+        case "": return "Codex"
         default:
             let raw = membership ?? ""
             return raw.split(separator: "_").map { part in

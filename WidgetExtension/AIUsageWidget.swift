@@ -89,7 +89,7 @@ struct AIUsageWidget: Widget {
                 }
         }
         .configurationDisplayName("AI使用量")
-        .description("Cursor / Claude / ChatGPT のプランと使用量を表示します")
+        .description("Cursor / Claude / Codex のプランと使用量を表示します")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

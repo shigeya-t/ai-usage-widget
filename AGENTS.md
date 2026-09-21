@@ -59,7 +59,7 @@ Keychain も本番経路では触らない（Cookie 正規化と JSON マッピ�
 - Cursor: 個人向け公式 API はない。`GET https://cursor.com/api/usage-summary`（非公式）。認証は `WorkosCursorSessionToken` Cookie。
 - Claude サブスク: `GET https://api.anthropic.com/api/oauth/usage`。Claude Code の OAuth access token（refresh しない）。
 - Claude API: 公式 `GET https://api.anthropic.com/v1/organizations/cost_report`（Admin / API キー）。
-- ChatGPT / Codex サブスク: `GET https://chatgpt.com/backend-api/wham/usage`（404 時は `.../codex/usage`）。Codex の access token（refresh しない）。
+- Codex サブスク: `GET https://chatgpt.com/backend-api/wham/usage`（404 時は `.../codex/usage`）。Codex の access token（refresh しない）。
 - OpenAI API: 公式 `GET https://api.openai.com/v1/organization/costs`（Admin / API キー）。
 
 ホストはメニューバー常駐（サンドボックスなし。Cursor の `state.vscdb` や Claude / Codex のローカル資格情報を読むため）。

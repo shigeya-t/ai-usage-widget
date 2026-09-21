@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-Cursor / Claude / ChatGPT（Codex）のプランと使用量を、macOS のメニューバーと
+Cursor / Claude / Codex のプランと使用量を、macOS のメニューバーと
 WidgetKit ウィジェットでいつでも確認できるアプリです。
 
 [東京地下鉄ウィジェット](https://github.com/shigeya-t/subway-widget) と同じく、
@@ -22,12 +22,12 @@ Cursor のダッシュボードには Plan & Usage がありますが、残り�
 かなりはみ出していた、ということがありました。
 
 設定ページを毎回開かなくても、メニューバーやデスクトップのウィジェットを一目見れば
-プラン枠と従量が分かるようにしたくて作りました。Claude と ChatGPT（Codex）も同じ
+プラン枠と従量が分かるようにしたくて作りました。Claude と Codex も同じ
 置き場所から見られるようにしています。
 
 ## できること
 
-- サービス切り替え（Cursor / Claude / ChatGPT）
+- サービス切り替え（Cursor / Claude / Codex）
 - Plan & Usage 相当の表示（プラン名・リセット日・パーセント棒・従量）
 - メニューバー常駐（Dock には出ません）とウィジェット（小・中・大）
 - 日本語 / English の切り替え（アプリとウィジェットで共有）
@@ -42,7 +42,7 @@ Cursor のダッシュボードには Plan & Usage がありますが、残り�
 - 見たいサービスへのローカルログイン（推奨）:
   - Cursor: Cursor.app
   - Claude: Claude Code
-  - ChatGPT（Codex）: Codex CLI
+  - Codex: Codex CLI（ChatGPT アカウント）
 
 ## ビルドと導入
 
@@ -101,7 +101,7 @@ OAuth の refresh はしません（単回利用の refresh token を潰さな�
 Claude.app（デスクトップ）のログインは使いません。Claude Code にログインしていると 5時間・週次枠が取れます。API キーだけのときは公式
 `GET https://api.anthropic.com/v1/organizations/cost_report`（Admin キーが必要）で今月の API 費用を出します。個人アカウントでは Admin API が使えないことがあります。期限切れのときは Claude Code を一度起動してください（こちらから refresh しません）。
 
-### ChatGPT（Codex）
+### Codex
 
 プラン枠（ChatGPT ログイン）: `GET https://chatgpt.com/backend-api/wham/usage`
 （404 のときは `.../codex/usage`）
