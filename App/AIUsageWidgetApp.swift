@@ -531,6 +531,13 @@ struct MenuContent: View {
                     NSApplication.shared.terminate(nil)
                 }
             }
+            if let build = BuildStamp.label(in: .main) {
+                Text(build)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .font(.caption)
     }

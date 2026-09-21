@@ -932,6 +932,19 @@ final class ChatGPTSessionTests: XCTestCase {
     }
 }
 
+final class BuildStampTests: XCTestCase {
+    func testJoinsVersionAndCommit() {
+        XCTAssertEqual(BuildStamp.label(version: "1.1.0", commit: "b4263b6c1a2f"), "1.1.0 · b4263b6c1a2f")
+        XCTAssertEqual(BuildStamp.label(version: "1.1.0", commit: "b4263b6c1a2f-dirty"), "1.1.0 · b4263b6c1a2f-dirty")
+    }
+
+    func testOmitsUnsetCommitPlaceholder() {
+        XCTAssertEqual(BuildStamp.label(version: "1.1.0", commit: "$(GIT_COMMIT_HASH)"), "1.1.0")
+        XCTAssertEqual(BuildStamp.label(version: "  ", commit: nil), nil)
+        XCTAssertEqual(BuildStamp.label(version: nil, commit: "abc1234"), "abc1234")
+    }
+}
+
 final class MenuBarTitleTests: XCTestCase {
     func testShowsWorstMeterPercent() {
         let snap = UsageSnapshot(
