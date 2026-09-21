@@ -1,0 +1,13 @@
+{
+  "five_hour": {
+    "utilization": 1
+  },
+  "extra_usage": {
+    "is_enabled": false,
+    "monthly_limit": 10000,
+    "used_credits": 4150.0,
+    "decimal_places": 2,
+    "credits_ever_enabled": true,
+    "disabled_reason": "out_of_credits"
+  }
+}

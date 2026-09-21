@@ -64,11 +64,51 @@ struct SpendMeter: Codable, Equatable {
     /// 上限（ドル）。nil は無制限
     var limitUSD: Double?
     var isUnlimited: Bool
+    /// 残り残高。単位は `unit`。旧スナップショットには無い。
+    var remainingUSD: Double? = nil
+    /// nil はドル（旧スナップショット互換）。
+    var unit: SpendUnit? = nil
+
+    var displayUnit: SpendUnit { unit ?? .usd }
 
     var fraction: Double {
-        guard let limitUSD, limitUSD > 0, !isUnlimited else { return 0 }
+        guard remainingUSD == nil, let limitUSD, limitUSD > 0, !isUnlimited else { return 0 }
         return min(max(usedUSD / limitUSD, 0), 1)
     }
+
+    func formattedAmount(language: AppLanguage, compact: Bool) -> String {
+        if displayUnit == .credits {
+            if let remaining = remainingUSD {
+                let number = UsageFormatting.formatCount(remaining)
+                return L10n.format(
+                    compact ? "spend.credits.balance.compact" : "spend.credits.balance",
+                    number,
+                    language: language
+                )
+            }
+            if isUnlimited {
+                return L10n.string("spend.unlimited", language: language)
+            }
+        }
+        if isUnlimited || limitUSD == nil {
+            return L10n.format(
+                compact ? "spend.amountUnlimited.compact" : "spend.amountUnlimited",
+                usedUSD,
+                language: language
+            )
+        }
+        return L10n.format(
+            compact ? "spend.amount.compact" : "spend.amount",
+            usedUSD,
+            limitUSD ?? 0,
+            language: language
+        )
+    }
+}
+
+enum SpendUnit: String, Codable, Equatable {
+    case usd
+    case credits
 }
 
 enum AppLanguage: String, Codable, CaseIterable, Identifiable {
@@ -91,5 +131,14 @@ enum UsageFormatting {
         if value <= 0 { return 0 }
         if value < 1 { return 1 }
         return Int(value.rounded())
+    }
+
+    /// クレジット数。整数なら桁を落とす。
+    static func formatCount(_ value: Double) -> String {
+        guard value.isFinite else { return "0" }
+        if abs(value - value.rounded()) < 0.0005 {
+            return String(format: "%.0f", value.rounded())
+        }
+        return String(format: "%.2f", value)
     }
 }

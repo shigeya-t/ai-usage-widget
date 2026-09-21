@@ -16,7 +16,10 @@ struct ClaudeProvider: UsageProvider {
     func clearManualCredential() { ClaudeSession.clearManualToken() }
 
     func fetchSnapshot() async throws -> UsageSnapshot {
-        switch try ClaudeSession.resolveCredential() {
+        let credential = try await MainActor.run {
+            try ClaudeSession.resolveCredential()
+        }
+        switch credential {
         case .apiKey(let apiKey):
             return try await Self.fetchOfficialSnapshot(apiKey: apiKey)
         case .oauth(let creds):
@@ -150,21 +153,7 @@ struct ClaudeProvider: UsageProvider {
             meters.append(meter(id: "seven-day-sonnet", titleKey: "meter.sevenDaySonnet", subtitleKey: nil, window: window, accent: .secondary))
         }
 
-        let spend: SpendMeter?
-        if let extra = usage.extraUsage, extra.isEnabled != false {
-            let used = extra.usedCredits?.value ?? 0
-            let limit = extra.monthlyLimit?.value
-            spend = SpendMeter(
-                id: "extra-usage",
-                titleKey: "spend.extraUsage",
-                noteKey: "spend.extraUsage.note",
-                usedUSD: used,
-                limitUSD: limit,
-                isUnlimited: limit == nil
-            )
-        } else {
-            spend = nil
-        }
+        let spend = mapExtraUsageSpend(usage)
 
         let resetAt = usage.fiveHour?.resetsAt?.date ?? usage.sevenDay?.resetsAt?.date
         return UsageSnapshot(
@@ -252,6 +241,80 @@ struct ClaudeProvider: UsageProvider {
         guard let raw, let cents = Double(raw) else { return 0 }
         return cents / 100.0
     }
+
+    /// OAuth の現行 `spend`（minor + exponent）を優先し、無いときだけ legacy `extra_usage`。
+    /// `is_enabled == false` でも残高切れで使った分は出す。未購入アカウントは出さない。
+    static func mapExtraUsageSpend(_ usage: ClaudeOAuthUsageResponse) -> SpendMeter? {
+        if let spend = usage.spend, let meter = spendMeter(from: spend) {
+            return meter
+        }
+        return spendMeter(from: usage.extraUsage)
+    }
+
+    static func usdFromMinor(_ amount: Double?, decimalPlaces: Int?) -> Double? {
+        guard let amount else { return nil }
+        let places = max(decimalPlaces ?? 0, 0)
+        let usd = amount / pow(10.0, Double(places))
+        guard usd.isFinite else { return nil }
+        return usd
+    }
+
+    private static func spendMeter(from spend: ClaudeOAuthSpend) -> SpendMeter? {
+        let used = usd(from: spend.used) ?? 0
+        let limit = usd(from: spend.limit)
+        guard shouldShowExtraUsage(
+            enabled: spend.enabled,
+            used: used,
+            everEnabled: nil,
+            disabledReason: spend.disabledReason
+        ) else { return nil }
+        return extraUsageMeter(used: used, limit: limit, disabledReason: spend.disabledReason)
+    }
+
+    private static func spendMeter(from extra: ClaudeExtraUsage?) -> SpendMeter? {
+        guard let extra else { return nil }
+        let places = extra.decimalPlaces.map { Int($0.value.rounded()) }
+        let used = usdFromMinor(extra.usedCredits?.value, decimalPlaces: places) ?? 0
+        let limit = usdFromMinor(extra.monthlyLimit?.value, decimalPlaces: places)
+        guard shouldShowExtraUsage(
+            enabled: extra.isEnabled,
+            used: used,
+            everEnabled: extra.creditsEverEnabled,
+            disabledReason: extra.disabledReason
+        ) else { return nil }
+        return extraUsageMeter(used: used, limit: limit, disabledReason: extra.disabledReason)
+    }
+
+    private static func extraUsageMeter(used: Double, limit: Double?, disabledReason: String?) -> SpendMeter {
+        let outOfCredits = disabledReason == "out_of_credits"
+        return SpendMeter(
+            id: "extra-usage",
+            titleKey: "spend.extraUsage",
+            noteKey: outOfCredits ? "spend.extraUsage.outOfCredits" : "spend.extraUsage.note",
+            usedUSD: used,
+            limitUSD: limit,
+            isUnlimited: limit == nil
+        )
+    }
+
+    static func shouldShowExtraUsage(
+        enabled: Bool?,
+        used: Double,
+        everEnabled: Bool?,
+        disabledReason: String?
+    ) -> Bool {
+        if enabled == true { return true }
+        if everEnabled == true { return true }
+        if used > 0 { return true }
+        if disabledReason != nil { return true }
+        return false
+    }
+
+    private static func usd(from amount: ClaudeMoneyAmount?) -> Double? {
+        guard let amount else { return nil }
+        let exponent = amount.exponent.map { Int($0.value.rounded()) } ?? 2
+        return usdFromMinor(amount.amountMinor?.value, decimalPlaces: exponent)
+    }
 }
 
 // MARK: - Wire types
@@ -262,6 +325,7 @@ struct ClaudeOAuthUsageResponse: Codable, Equatable {
     var sevenDayOpus: ClaudeUsageWindow?
     var sevenDaySonnet: ClaudeUsageWindow?
     var extraUsage: ClaudeExtraUsage?
+    var spend: ClaudeOAuthSpend?
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
@@ -269,6 +333,33 @@ struct ClaudeOAuthUsageResponse: Codable, Equatable {
         case sevenDayOpus = "seven_day_opus"
         case sevenDaySonnet = "seven_day_sonnet"
         case extraUsage = "extra_usage"
+        case spend
+    }
+}
+
+struct ClaudeOAuthSpend: Codable, Equatable {
+    var used: ClaudeMoneyAmount?
+    var limit: ClaudeMoneyAmount?
+    var enabled: Bool?
+    var disabledReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case used
+        case limit
+        case enabled
+        case disabledReason = "disabled_reason"
+    }
+}
+
+struct ClaudeMoneyAmount: Codable, Equatable {
+    var amountMinor: JSONNumber?
+    var currency: String?
+    var exponent: JSONNumber?
+
+    enum CodingKeys: String, CodingKey {
+        case amountMinor = "amount_minor"
+        case currency
+        case exponent
     }
 }
 
@@ -287,12 +378,18 @@ struct ClaudeExtraUsage: Codable, Equatable {
     var monthlyLimit: JSONNumber?
     var usedCredits: JSONNumber?
     var utilization: JSONNumber?
+    var decimalPlaces: JSONNumber?
+    var creditsEverEnabled: Bool?
+    var disabledReason: String?
 
     enum CodingKeys: String, CodingKey {
         case isEnabled = "is_enabled"
         case monthlyLimit = "monthly_limit"
         case usedCredits = "used_credits"
         case utilization
+        case decimalPlaces = "decimal_places"
+        case creditsEverEnabled = "credits_ever_enabled"
+        case disabledReason = "disabled_reason"
     }
 }
 

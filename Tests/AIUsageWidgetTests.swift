@@ -165,6 +165,8 @@ final class L10nTests: XCTestCase {
             "meter.codeReview",
             "spend.onDemand",
             "spend.extraUsage",
+            "spend.credits",
+            "spend.credits.balance",
             "spend.apiCost",
             "plan.reset.compact",
             "spend.amount.compact",
@@ -179,6 +181,7 @@ final class L10nTests: XCTestCase {
             "error.unauthorized.claude",
             "error.rateLimited",
             "error.apiKeyMode.claude",
+            "error.keychainDenied.claude",
             "error.apiKeyMode.chatgpt",
             "widget.placeholder"
         ]
@@ -210,6 +213,29 @@ final class L10nTests: XCTestCase {
             L10n.format("spend.amount.compact", 44.48, 50.0, language: .en),
             "$44.48/$50"
         )
+        XCTAssertEqual(
+            L10n.format("spend.credits.balance", "250", language: .ja),
+            "残高 250"
+        )
+        XCTAssertEqual(
+            L10n.format("spend.credits.balance", "12.34", language: .en),
+            "12.34 credits"
+        )
+        XCTAssertEqual(UsageFormatting.formatCount(250), "250")
+        XCTAssertEqual(UsageFormatting.formatCount(12.34), "12.34")
+        let credits = SpendMeter(
+            id: "credits",
+            titleKey: "spend.credits",
+            noteKey: nil,
+            usedUSD: 250,
+            limitUSD: nil,
+            isUnlimited: true,
+            remainingUSD: 250,
+            unit: .credits
+        )
+        XCTAssertEqual(credits.formattedAmount(language: .ja, compact: false), "残高 250")
+        XCTAssertEqual(credits.formattedAmount(language: .ja, compact: true), "残250")
+        XCTAssertEqual(credits.formattedAmount(language: .en, compact: false), "250 credits")
     }
 }
 
@@ -249,9 +275,62 @@ final class ClaudeProviderMappingTests: XCTestCase {
 
         let spend = try XCTUnwrap(snap.spend)
         XCTAssertEqual(spend.titleKey, "spend.extraUsage")
+        XCTAssertEqual(spend.noteKey, "spend.extraUsage.note")
         XCTAssertEqual(spend.usedUSD, 12.5, accuracy: 0.001)
         XCTAssertEqual(spend.limitUSD ?? -1, 50, accuracy: 0.001)
         XCTAssertFalse(spend.isUnlimited)
+    }
+
+    func testMapsCurrentSpendObjectEvenWhenDisabled() throws {
+        let usage = try decodeFixture("claude_oauth_usage_spend")
+        let snap = ClaudeProvider.mapUsage(
+            usage,
+            accountLabel: nil,
+            subscriptionType: "pro",
+            rateLimitTier: nil,
+            fetchedAt: Date()
+        )
+
+        let spend = try XCTUnwrap(snap.spend)
+        XCTAssertEqual(spend.titleKey, "spend.extraUsage")
+        XCTAssertEqual(spend.noteKey, "spend.extraUsage.outOfCredits")
+        XCTAssertEqual(spend.usedUSD, 41.50, accuracy: 0.001)
+        XCTAssertEqual(spend.limitUSD ?? -1, 100, accuracy: 0.001)
+        XCTAssertFalse(spend.isUnlimited)
+    }
+
+    func testMapsLegacyExtraUsageMinorUnitsWhenSpendMissing() throws {
+        let usage = try decodeFixture("claude_oauth_usage_extra_cents")
+        let snap = ClaudeProvider.mapUsage(
+            usage,
+            accountLabel: nil,
+            subscriptionType: "pro",
+            rateLimitTier: nil,
+            fetchedAt: Date()
+        )
+
+        let spend = try XCTUnwrap(snap.spend)
+        XCTAssertEqual(spend.usedUSD, 41.50, accuracy: 0.001)
+        XCTAssertEqual(spend.limitUSD ?? -1, 100, accuracy: 0.001)
+        XCTAssertEqual(spend.noteKey, "spend.extraUsage.outOfCredits")
+    }
+
+    func testHidesNeverPurchasedExtraUsage() throws {
+        let usage = try decodeFixture("claude_oauth_usage_extra_disabled")
+        let snap = ClaudeProvider.mapUsage(
+            usage,
+            accountLabel: nil,
+            subscriptionType: "pro",
+            rateLimitTier: nil,
+            fetchedAt: Date()
+        )
+        XCTAssertNil(snap.spend)
+    }
+
+    func testUsdFromMinor() {
+        XCTAssertEqual(ClaudeProvider.usdFromMinor(4150, decimalPlaces: 2) ?? -1, 41.50, accuracy: 0.001)
+        XCTAssertEqual(ClaudeProvider.usdFromMinor(12.5, decimalPlaces: nil) ?? -1, 12.5, accuracy: 0.001)
+        XCTAssertNil(ClaudeProvider.usdFromMinor(nil, decimalPlaces: 2))
     }
 
     func testMapsStringPercentsAndUnixResetWithoutExtra() throws {
@@ -353,6 +432,24 @@ final class ClaudeSessionTests: XCTestCase {
         }
     }
 
+    func testParsePrefersClaudeAiOauthOverMcpPluginToken() throws {
+        let json = """
+        {
+          "mcpOAuth": { "plugin:github|1": { "accessToken": "mcp-plugin-token" } },
+          "claudeAiOauth": { "accessToken": "sk-ant-oat-real", "subscriptionType": "pro" }
+        }
+        """
+        let creds = try ClaudeSession.parseCredentialsJSON(Data(json.utf8))
+        XCTAssertEqual(creds.accessToken, "sk-ant-oat-real")
+        XCTAssertEqual(creds.subscriptionType, "pro")
+        XCTAssertNotNil(ClaudeSession.oauthCredsIfPresent(in: Data(#"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-real"}}"#.utf8)))
+    }
+
+    func testKeychainConfigSuffixIsSha256Prefix() {
+        XCTAssertEqual(ClaudeSession.keychainConfigSuffix(forConfigDir: "hello"), "-2cf24dba")
+        XCTAssertTrue(ClaudeSession.keychainServiceNames(configDir: "/tmp/claude-config").contains { $0.hasPrefix("Claude Code-credentials-") })
+    }
+
     func testParseAPIKeyFromCredentialsJSON() {
         let json = #"{"ANTHROPIC_API_KEY":"sk-ant-api03-test"}"#
         let key = ClaudeSession.parseAPIKey(
@@ -361,6 +458,7 @@ final class ClaudeSessionTests: XCTestCase {
         XCTAssertEqual(key, "sk-ant-api03-test")
         XCTAssertTrue(ClaudeSession.isAPIKey("sk-ant-admin01-abc"))
         XCTAssertFalse(ClaudeSession.isAPIKey("sk-ant-oat-test"))
+        XCTAssertFalse(ClaudeSession.isAPIKey("sk-ant-oat01-abc"))
     }
 
     func testReadCredentialsFile() throws {
@@ -371,6 +469,13 @@ final class ClaudeSessionTests: XCTestCase {
         let creds = try XCTUnwrap(try ClaudeSession.readCredentialsFile(fileURL: url))
         XCTAssertEqual(creds.accessToken, "sk-ant-oat-file")
         XCTAssertEqual(creds.subscriptionType, "team")
+        let viaLoad = try XCTUnwrap(try ClaudeSession.loadLocalCredentials(fileURL: url, interactiveKeychain: false))
+        XCTAssertEqual(viaLoad.accessToken, "sk-ant-oat-file")
+    }
+
+    func testEnvironmentOAuthTokenNameIsSeparateFromAPIKey() {
+        XCTAssertFalse(ClaudeSession.isAPIKey("sk-ant-oat-ci-token"))
+        XCTAssertEqual(ClaudeSession.normalizeToken("Bearer sk-ant-oat-ci-token"), "sk-ant-oat-ci-token")
     }
 }
 
@@ -397,7 +502,37 @@ final class ChatGPTProviderMappingTests: XCTestCase {
         XCTAssertEqual(snap.meters[1].percentUsed, 12, accuracy: 0.001)
         XCTAssertEqual(snap.meters[2].titleKey, "meter.codeReview")
         XCTAssertEqual(snap.meters[2].percentUsed, 2, accuracy: 0.001)
+
+        let spend = try XCTUnwrap(snap.spend)
+        XCTAssertEqual(spend.titleKey, "spend.credits")
+        XCTAssertEqual(spend.unit, .credits)
+        XCTAssertEqual(spend.remainingUSD ?? -1, 12.34, accuracy: 0.001)
+        XCTAssertEqual(spend.formattedAmount(language: .ja, compact: false), "残高 12.34")
+        XCTAssertEqual(spend.formattedAmount(language: .en, compact: false), "12.34 credits")
+        XCTAssertTrue(spend.isUnlimited)
+    }
+
+    func testHidesCreditsWhenNotPurchased() throws {
+        let usage = try decodeFixture("chatgpt_wham_usage_no_credits")
+        let snap = ChatGPTProvider.mapUsage(
+            usage,
+            accountLabel: nil,
+            fallbackPlanType: nil,
+            fetchedAt: Date()
+        )
         XCTAssertNil(snap.spend)
+        XCTAssertEqual(snap.plan.name, "Go")
+        XCTAssertEqual(snap.plan.priceText, "$8/mo")
+    }
+
+    func testMapsUnlimitedCreditsWithoutBalance() throws {
+        let credits = ChatGPTCredits(hasCredits: true, unlimited: true, balance: nil)
+        let spend = try XCTUnwrap(ChatGPTProvider.mapCredits(credits))
+        XCTAssertEqual(spend.titleKey, "spend.credits")
+        XCTAssertEqual(spend.unit, .credits)
+        XCTAssertNil(spend.remainingUSD)
+        XCTAssertTrue(spend.isUnlimited)
+        XCTAssertEqual(spend.formattedAmount(language: .ja, compact: false), "無制限")
     }
 
     func testFallsBackToPrimaryRateLimit() throws {
@@ -415,6 +550,7 @@ final class ChatGPTProviderMappingTests: XCTestCase {
         XCTAssertEqual(snap.meters[0].titleKey, "meter.window.monthly")
         XCTAssertEqual(snap.meters[0].percentUsed, 41, accuracy: 0.001)
         XCTAssertNotNil(snap.plan.resetAt)
+        XCTAssertNil(snap.spend)
     }
 
     func testWindowTitleKeys() {
@@ -427,6 +563,8 @@ final class ChatGPTProviderMappingTests: XCTestCase {
 
     func testDisplayPlanName() {
         XCTAssertEqual(ChatGPTProvider.displayPlanName("plus"), "Plus")
+        XCTAssertEqual(ChatGPTProvider.displayPlanName("go"), "Go")
+        XCTAssertEqual(ChatGPTProvider.displayPlanName("free"), "Free")
         XCTAssertEqual(ChatGPTProvider.displayPlanName("pro_lite"), "Pro Lite")
         XCTAssertEqual(ChatGPTProvider.displayPlanName(nil), "ChatGPT")
     }

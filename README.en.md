@@ -9,9 +9,10 @@ The architecture matches [Subway Widget](https://github.com/shigeya-t/subway-wid
 **the host app fetches data; the widget extension only displays snapshots.**
 
 <p align="center">
-  <img src="docs/screenshots/widget-en.png" alt="Widget (English)" width="220" />
-  &nbsp;
-  <img src="docs/screenshots/menu-en.png" alt="Menu bar (English)" width="280" />
+  <img src="docs/screenshots/widget-en.png" alt="Widget (English)" width="500" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/menu-en.png" alt="Menu bar (English)" width="300" />
 </p>
 
 ## Why this exists
@@ -94,11 +95,11 @@ Paste a cookie only when automatic resolution fails:
 Plan windows (OAuth): `GET https://api.anthropic.com/api/oauth/usage`
 
 1. Manually saved access token in Keychain (if present, preferred). `sk-ant-admin01-` / `sk-ant-api` keys use the official Cost API
-2. Claude Code Keychain (`Claude Code-credentials`)
-3. `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR` if set)
-4. `ANTHROPIC_ADMIN_KEY` / `ANTHROPIC_API_KEY` (official Cost API)
+2. `~/.claude/.credentials.json` (`CLAUDE_CONFIG_DIR` if set; no prompt)
+3. Claude Code Keychain (`Claude Code-credentials`), prompted at most once per fetch
+4. `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_ADMIN_KEY` / `ANTHROPIC_API_KEY`
 
-A Claude Code account login shows the 5-hour and weekly windows. API-key-only setups use the official
+A Claude.app desktop login is not used. A Claude Code account login shows the 5-hour and weekly windows. API-key-only setups use the official
 `GET https://api.anthropic.com/v1/organizations/cost_report` (Admin key required) for this month’s API spend.
 The Admin API is unavailable for many individual accounts. If the token expired, open Claude Code once (this app does
 not refresh tokens).

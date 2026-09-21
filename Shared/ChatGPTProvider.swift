@@ -156,7 +156,7 @@ struct ChatGPTProvider: UsageProvider {
             )
         }
 
-        let spend: SpendMeter? = nil
+        let spend = mapCredits(usage.credits)
         let resetAt = details?.primaryWindow?.resetAt?.date
             ?? details?.secondaryWindow?.resetAt?.date
         let planType = usage.planType ?? fallbackPlanType
@@ -199,7 +199,8 @@ struct ChatGPTProvider: UsageProvider {
         case "plus": return "Plus"
         case "pro": return "Pro"
         case "prolite", "pro_lite": return "Pro Lite"
-        case "free", "guest", "go": return "Free"
+        case "go": return "Go"
+        case "free", "guest": return "Free"
         case "team", "business": return "Business"
         case "enterprise": return "Enterprise"
         case "edu", "education": return "Edu"
@@ -214,11 +215,40 @@ struct ChatGPTProvider: UsageProvider {
 
     static func knownPrice(_ membership: String?) -> String? {
         switch (membership ?? "").lowercased() {
+        case "go": return "$8/mo"
         case "plus": return "$20/mo"
         case "pro": return "$200/mo"
         case "prolite", "pro_lite": return "Pro Lite"
         default: return nil
         }
+    }
+
+    static func mapCredits(_ credits: ChatGPTCredits?) -> SpendMeter? {
+        guard let credits else { return nil }
+        if let remaining = credits.balance?.value {
+            let hasCredits = credits.hasCredits != false
+            guard hasCredits || remaining > 0 else { return nil }
+            return SpendMeter(
+                id: "credits",
+                titleKey: "spend.credits",
+                noteKey: "spend.credits.note",
+                usedUSD: remaining,
+                limitUSD: nil,
+                isUnlimited: true,
+                remainingUSD: remaining,
+                unit: .credits
+            )
+        }
+        guard credits.unlimited == true else { return nil }
+        return SpendMeter(
+            id: "credits",
+            titleKey: "spend.credits",
+            noteKey: "spend.credits.note",
+            usedUSD: 0,
+            limitUSD: nil,
+            isUnlimited: true,
+            unit: .credits
+        )
     }
 
     static func mapCosts(
@@ -339,7 +369,7 @@ struct ChatGPTAdditionalRateLimit: Codable, Equatable {
 struct ChatGPTCredits: Codable, Equatable {
     var hasCredits: Bool?
     var unlimited: Bool?
-    var balance: String?
+    var balance: JSONNumber?
 
     enum CodingKeys: String, CodingKey {
         case hasCredits = "has_credits"

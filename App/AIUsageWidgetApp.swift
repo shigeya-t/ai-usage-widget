@@ -164,6 +164,9 @@ final class UsageModel: ObservableObject {
     func refresh(force: Bool = false) async {
         isRefreshing = true
         defer { isRefreshing = false }
+        if force {
+            ClaudeSession.retryKeychainAccess()
+        }
 
         let providerIDs = await providersToRefresh()
         for providerID in providerIDs {
@@ -268,8 +271,15 @@ final class UsageModel: ObservableObject {
                 return L10n.format("error.network", api.localizedDescription, language: language)
             }
         }
-        if let claude = error as? ClaudeSessionError, claude == .apiKeyMode {
-            return L10n.string("error.apiKeyMode.claude", language: language)
+        if let claude = error as? ClaudeSessionError {
+            switch claude {
+            case .apiKeyMode:
+                return L10n.string("error.apiKeyMode.claude", language: language)
+            case .keychainDenied:
+                return L10n.string("error.keychainDenied.claude", language: language)
+            case .tokenMissing, .tokenExpired, .invalidToken:
+                return L10n.string(provider.authNeededKey, language: language)
+            }
         }
         if let chatgpt = error as? ChatGPTSessionError, chatgpt == .apiKeyMode {
             return L10n.string("error.apiKeyMode.chatgpt", language: language)
@@ -420,7 +430,7 @@ struct MenuContent: View {
     @ViewBuilder
     private var authSection: some View {
         let provider = model.selectedProvider
-        let needsAuth = model.errorText != nil || !(provider?.hasAnyCredential() ?? false)
+        let needsAuth = model.errorText != nil || model.snapshot == nil
         VStack(alignment: .leading, spacing: 6) {
             Text(L10n.string("menu.cookieSection", language: lang))
                 .font(.caption)
@@ -458,7 +468,7 @@ struct MenuContent: View {
         if model.hasManualCookie {
             return L10n.string("menu.credentialSaved", language: lang)
         }
-        if let provider = model.selectedProvider, provider.hasAnyCredential(), model.errorText == nil {
+        if model.errorText == nil, model.snapshot != nil, let provider = model.selectedProvider {
             return L10n.string(provider.usingAppKey, language: lang)
         }
         return L10n.string(model.selectedProvider?.authNeededKey ?? "menu.authNeeded", language: lang)
@@ -553,15 +563,14 @@ struct SpendRow: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
-            ProgressView(value: spend.isUnlimited ? 0 : spend.fraction)
-                .tint(Color.secondary)
+            if spend.remainingUSD == nil {
+                ProgressView(value: spend.isUnlimited ? 0 : spend.fraction)
+                    .tint(Color.secondary)
+            }
         }
     }
 
     private var amountText: String {
-        if spend.isUnlimited || spend.limitUSD == nil {
-            return L10n.format("spend.amountUnlimited", spend.usedUSD, language: language)
-        }
-        return L10n.format("spend.amount", spend.usedUSD, spend.limitUSD ?? 0, language: language)
+        spend.formattedAmount(language: language, compact: false)
     }
 }

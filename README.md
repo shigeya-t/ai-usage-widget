@@ -9,9 +9,10 @@ WidgetKit ウィジェットでいつでも確認できるアプリです。
 **メニューバー常駐アプリが取得し、ウィジェットは表示だけ** という構成です。
 
 <p align="center">
-  <img src="docs/screenshots/widget-ja.png" alt="ウィジェット（日本語）" width="220" />
-  &nbsp;
-  <img src="docs/screenshots/menu-ja.png" alt="メニューバー（日本語）" width="280" />
+  <img src="docs/screenshots/widget-ja.png" alt="ウィジェット（日本語）" width="500" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/menu-ja.png" alt="メニューバー（日本語）" width="300" />
 </p>
 
 ## 作った動機
@@ -93,11 +94,11 @@ OAuth の refresh はしません（単回利用の refresh token を潰さな�
 プラン枠（OAuth）: `GET https://api.anthropic.com/api/oauth/usage`
 
 1. メニューバーに保存した access token（Keychain）※あれば優先。`sk-ant-admin01-` / `sk-ant-api` なら公式 Cost API を使う
-2. Claude Code の Keychain（`Claude Code-credentials`）
-3. `~/.claude/.credentials.json`（`CLAUDE_CONFIG_DIR` があればそちら）
-4. 環境変数 `ANTHROPIC_ADMIN_KEY` / `ANTHROPIC_API_KEY`（公式 Cost API）
+2. `~/.claude/.credentials.json`（`CLAUDE_CONFIG_DIR` があればそちら。プロンプトが出ない）
+3. Claude Code の Keychain（`Claude Code-credentials`）。取得時に一度だけ聞く
+4. 環境変数 `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_ADMIN_KEY` / `ANTHROPIC_API_KEY`
 
-Claude Code にログインしていると 5時間・週次枠が取れます。API キーだけのときは公式
+Claude.app（デスクトップ）のログインは使いません。Claude Code にログインしていると 5時間・週次枠が取れます。API キーだけのときは公式
 `GET https://api.anthropic.com/v1/organizations/cost_report`（Admin キーが必要）で今月の API 費用を出します。個人アカウントでは Admin API が使えないことがあります。期限切れのときは Claude Code を一度起動してください（こちらから refresh しません）。
 
 ### ChatGPT（Codex）

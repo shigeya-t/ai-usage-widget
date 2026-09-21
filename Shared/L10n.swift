@@ -58,11 +58,17 @@ enum L10n {
             .ja: "プラン枠を超えた追加使用です。",
             .en: "Pay-as-you-go usage beyond the plan window."
         ],
+        "spend.extraUsage.outOfCredits": [
+            .ja: "クレジット残高がなく、追加使用は停止中です。",
+            .en: "Usage credits are empty, so extra usage is paused."
+        ],
         "spend.credits": [.ja: "クレジット", .en: "Credits"],
         "spend.credits.note": [
-            .ja: "ChatGPT のクレジット残高です。",
-            .en: "ChatGPT credit balance."
+            .ja: "Codex / ChatGPT の追加クレジット残高です。プラン枠ではありません。",
+            .en: "Extra usage-credit balance for Codex / ChatGPT, not the plan window."
         ],
+        "spend.credits.balance": [.ja: "残高 %@", .en: "%@ credits"],
+        "spend.credits.balance.compact": [.ja: "残%@", .en: "%@ cr"],
         "spend.apiCost": [.ja: "API 使用量", .en: "API usage"],
         "spend.apiCost.note": [
             .ja: "公式 Cost API による今月の API 費用です。プラン枠のパーセントではありません。",
@@ -105,8 +111,8 @@ enum L10n {
             .en: "Could not read a Cursor session. Re-sign in to Cursor.app, or paste a cursor.com cookie value (e.g. WorkosCursorSessionToken) below."
         ],
         "menu.authNeeded.claude": [
-            .ja: "Claude のセッションを取得できません。Claude Code にログインするか、OAuth の access token を貼り付けてください。期限切れのときは Claude Code を一度起動してください（こちらからトークンは更新しません）。",
-            .en: "Could not read a Claude session. Sign in to Claude Code, or paste an OAuth access token. If it expired, open Claude Code once (this app does not refresh tokens)."
+            .ja: "Claude Code のログインが見つかりません。Keychain のダイアログは、Claude Code の項目があるときだけ出ます。Claude.app（デスクトップ）のログインでは出ません。ターミナルで claude を起動して /login するか、access token を貼り付けてください。",
+            .en: "No Claude Code login was found. The keychain prompt appears only when a Claude Code item exists. A Claude.app desktop login will not show it. Run claude in the terminal and /login, or paste an OAuth access token."
         ],
         "menu.authNeeded.chatgpt": [
             .ja: "ChatGPT（Codex）のセッションを取得できません。Codex CLI にログインするか、access token を貼り付けてください。期限切れのときは Codex を一度起動してください（こちらからトークンは更新しません）。",
@@ -195,6 +201,10 @@ enum L10n {
         "error.apiKeyMode.claude": [
             .ja: "Claude のプラン枠は Claude Code のアカウントログインで取れます。API 消費は公式 Cost API 用の Admin キー（sk-ant-admin01- など）が必要です。",
             .en: "Claude plan windows need a Claude Code account login. API spend needs an Admin key for the official Cost API (e.g. sk-ant-admin01-)."
+        ],
+        "error.keychainDenied.claude": [
+            .ja: "Claude Code の Keychain を拒否されたか、このアプリからは読めません。ダイアログが出たら「常に許可」を選んでください。Claude.app のログインは代わりになりません。",
+            .en: "Claude Code keychain access was denied or is unreadable by this app. If a prompt appears, choose Always Allow. A Claude.app desktop login cannot be used instead."
         ],
         "error.apiKeyMode.chatgpt": [
             .ja: "ChatGPT のプラン枠は Codex の ChatGPT ログインで取れます。API 消費は公式 Cost API 用の Admin キーが必要です。",
