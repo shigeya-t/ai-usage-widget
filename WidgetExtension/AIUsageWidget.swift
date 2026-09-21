@@ -87,8 +87,8 @@ struct AIUsageWidget: Widget {
                     Color(nsColor: .windowBackgroundColor)
                 }
         }
-        .configurationDisplayName("Cursor使用量")
-        .description("Cursor のプランと使用量を表示します")
+        .configurationDisplayName("AI使用量")
+        .description("Cursor / Claude / ChatGPT のプランと使用量を表示します")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -120,7 +120,10 @@ struct AIUsageWidgetEntryView: View {
             snapshotContent(snapshot)
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.string("provider.cursor", language: lang))
+                Text(L10n.string(
+                    UsageProviderRegistry.provider(id: entry.providerID)?.displayNameKey ?? "provider.cursor",
+                    language: lang
+                ))
                     .font(.caption.weight(.semibold))
                 Label(L10n.string("widget.placeholder", language: lang), systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption2)
@@ -151,6 +154,10 @@ struct AIUsageWidgetEntryView: View {
 
     private func header(_ snapshot: UsageSnapshot) -> some View {
         VStack(alignment: .leading, spacing: isSmall ? 1 : 2) {
+            Text(providerTitle)
+                .font(.system(size: isSmall ? 9 : 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(snapshot.plan.name)
                     .font(isSmall ? .subheadline.weight(.semibold) : .title3.weight(.semibold))
@@ -171,6 +178,13 @@ struct AIUsageWidgetEntryView: View {
                     .minimumScaleFactor(0.85)
             }
         }
+    }
+
+    private var providerTitle: String {
+        L10n.string(
+            UsageProviderRegistry.provider(id: entry.providerID)?.displayNameKey ?? "provider.cursor",
+            language: lang
+        )
     }
 
     private func meterBlock(_ meter: UsageMeter) -> some View {
@@ -199,8 +213,7 @@ struct AIUsageWidgetEntryView: View {
                     .minimumScaleFactor(0.8)
             }
             usageBar(fraction: fraction, primary: meter.accent == .primary)
-            if isLarge {
-                let noteKey = meter.id == "cursor-models" ? "meter.cursorNote" : "meter.otherNote"
+            if isLarge, let noteKey = meter.noteKey {
                 Text(L10n.string(noteKey, language: lang))
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
@@ -211,6 +224,7 @@ struct AIUsageWidgetEntryView: View {
 
     private func spendBlock(_ spend: SpendMeter) -> some View {
         let amount = spendAmount(spend, compact: isSmall)
+        let showBar = spend.remainingUSD == nil
         return VStack(alignment: .leading, spacing: isSmall ? 1 : 2) {
             if isSmall {
                 // 金額が長いのでラベル行と分け、バー横に置く
@@ -218,7 +232,9 @@ struct AIUsageWidgetEntryView: View {
                     .font(.system(size: 10, weight: .medium))
                     .lineLimit(1)
                 HStack(spacing: 4) {
-                    usageBar(fraction: spend.isUnlimited ? 0 : spend.fraction, primary: false)
+                    if showBar {
+                        usageBar(fraction: spend.isUnlimited ? 0 : spend.fraction, primary: false)
+                    }
                     Text(amount)
                         .font(.system(size: 8).monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -239,7 +255,9 @@ struct AIUsageWidgetEntryView: View {
                         .lineLimit(1)
                         .layoutPriority(0)
                 }
-                usageBar(fraction: spend.isUnlimited ? 0 : spend.fraction, primary: false)
+                if showBar {
+                    usageBar(fraction: spend.isUnlimited ? 0 : spend.fraction, primary: false)
+                }
             }
             if isLarge, let noteKey = spend.noteKey {
                 Text(L10n.string(noteKey, language: lang))
@@ -282,19 +300,7 @@ struct AIUsageWidgetEntryView: View {
     }
 
     private func spendAmount(_ spend: SpendMeter, compact: Bool) -> String {
-        if spend.isUnlimited || spend.limitUSD == nil {
-            return L10n.format(
-                compact ? "spend.amountUnlimited.compact" : "spend.amountUnlimited",
-                spend.usedUSD,
-                language: lang
-            )
-        }
-        return L10n.format(
-            compact ? "spend.amount.compact" : "spend.amount",
-            spend.usedUSD,
-            spend.limitUSD ?? 0,
-            language: lang
-        )
+        spend.formattedAmount(language: lang, compact: compact)
     }
 
     private func resetCaption(_ date: Date, compact: Bool) -> String {

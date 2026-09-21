@@ -1,0 +1,27 @@
+{
+  "five_hour": {
+    "utilization": 0
+  },
+  "extra_usage": {
+    "is_enabled": false,
+    "monthly_limit": 10000,
+    "used_credits": 4150.0,
+    "decimal_places": 2,
+    "credits_ever_enabled": true,
+    "disabled_reason": "out_of_credits"
+  },
+  "spend": {
+    "used": {
+      "amount_minor": 4150,
+      "currency": "USD",
+      "exponent": 2
+    },
+    "limit": {
+      "amount_minor": 10000,
+      "currency": "USD",
+      "exponent": 2
+    },
+    "enabled": false,
+    "disabled_reason": "out_of_credits"
+  }
+}

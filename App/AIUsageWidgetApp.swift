@@ -25,6 +25,10 @@ final class UsageModel: ObservableObject {
         didSet {
             guard selectedProviderID != oldValue else { return }
             AppSettings.selectedProviderID = selectedProviderID
+            cookieDraft = ""
+            hasManualCookie = selectedProvider?.loadManualCredential() != nil
+            snapshot = AppSettings.snapshot(providerID: selectedProviderID)
+            errorText = snapshot?.errorMessage
             Task { await refresh(force: true) }
         }
     }
@@ -50,7 +54,7 @@ final class UsageModel: ObservableObject {
         selectedProviderID = AppSettings.selectedProviderID
         language = AppSettings.language
         isPaused = AppSettings.isPaused
-        hasManualCookie = CursorSession.loadManualCookie() != nil
+        hasManualCookie = UsageProviderRegistry.provider(id: selectedProviderID)?.loadManualCredential() != nil
         snapshot = AppSettings.snapshot(providerID: selectedProviderID)
         if !AppSettings.isUsingAppGroup {
             errorText = L10n.string("menu.teamEmpty", language: language)
@@ -120,9 +124,16 @@ final class UsageModel: ObservableObject {
         if shared { pause(propagate: false) } else { resume(propagate: false) }
     }
 
+    var selectedProvider: (any UsageProvider)? {
+        UsageProviderRegistry.provider(id: selectedProviderID)
+    }
+
     var menuBarTitle: String {
         if isPaused { return L10n.string("menu.paused", language: language) }
-        guard let snapshot else { return L10n.string("provider.cursor", language: language) }
+        guard let snapshot else {
+            let key = selectedProvider?.displayNameKey ?? "provider.cursor"
+            return L10n.string(key, language: language)
+        }
         let worst = snapshot.meters.map(\.displayPercent).max() ?? 0
         return "\(worst)%"
     }
@@ -153,6 +164,9 @@ final class UsageModel: ObservableObject {
     func refresh(force: Bool = false) async {
         isRefreshing = true
         defer { isRefreshing = false }
+        if force {
+            ClaudeSession.retryKeychainAccess()
+        }
 
         let providerIDs = await providersToRefresh()
         for providerID in providerIDs {
@@ -166,7 +180,7 @@ final class UsageModel: ObservableObject {
                 }
             } catch {
                 guard !Self.isCancellation(error) else { continue }
-                let message = Self.errorMessage(for: error, language: language)
+                let message = Self.errorMessage(for: error, provider: provider, language: language)
                 usageLogger.error("refresh failed: \(String(describing: error), privacy: .public)")
                 if providerID == selectedProviderID {
                     errorText = message
@@ -214,19 +228,20 @@ final class UsageModel: ObservableObject {
     }
 
     func saveCookieDraft() {
+        guard let provider = selectedProvider else { return }
         do {
-            try CursorSession.saveManualCookie(cookieDraft)
+            try provider.saveManualCredential(cookieDraft)
             cookieDraft = ""
             hasManualCookie = true
             errorText = nil
             Task { await refresh(force: true) }
         } catch {
-            errorText = L10n.string("menu.authNeeded", language: language)
+            errorText = L10n.string(provider.authNeededKey, language: language)
         }
     }
 
     func clearCookie() {
-        CursorSession.clearManualCookie()
+        selectedProvider?.clearManualCredential()
         hasManualCookie = false
         cookieDraft = ""
         Task { await refresh(force: true) }
@@ -243,17 +258,34 @@ final class UsageModel: ObservableObject {
         return (error as? URLError)?.code == .cancelled
     }
 
-    private static func errorMessage(for error: Error, language: AppLanguage) -> String {
-        if let api = error as? CursorAPIError {
+    private static func errorMessage(for error: Error, provider: any UsageProvider, language: AppLanguage) -> String {
+        if let api = error as? UsageAPIError {
             switch api {
             case .unauthorized:
-                return L10n.string("error.unauthorized", language: language)
+                return L10n.string("error.unauthorized.\(provider.id)", language: language)
+            case .rateLimited:
+                return L10n.string("error.rateLimited", language: language)
+            case .apiKeyMode:
+                return L10n.string("error.apiKeyMode.\(provider.id)", language: language)
             case .httpStatus, .decodeFailed:
                 return L10n.format("error.network", api.localizedDescription, language: language)
             }
         }
-        if error is CursorSessionError {
-            return L10n.string("menu.authNeeded", language: language)
+        if let claude = error as? ClaudeSessionError {
+            switch claude {
+            case .apiKeyMode:
+                return L10n.string("error.apiKeyMode.claude", language: language)
+            case .keychainDenied:
+                return L10n.string("error.keychainDenied.claude", language: language)
+            case .tokenMissing, .tokenExpired, .invalidToken:
+                return L10n.string(provider.authNeededKey, language: language)
+            }
+        }
+        if let chatgpt = error as? ChatGPTSessionError, chatgpt == .apiKeyMode {
+            return L10n.string("error.apiKeyMode.chatgpt", language: language)
+        }
+        if error is CursorSessionError || error is ClaudeSessionError || error is ChatGPTSessionError {
+            return L10n.string(provider.authNeededKey, language: language)
         }
         return L10n.format("error.network", error.localizedDescription, language: language)
     }
@@ -267,6 +299,8 @@ struct MenuContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            Divider()
+            providerRow
             Divider()
             usageBody
             Divider()
@@ -298,7 +332,7 @@ struct MenuContent: View {
                         }
                     }
                 } else {
-                    Text(L10n.string("provider.cursor", language: lang))
+                    Text(L10n.string(model.selectedProvider?.displayNameKey ?? "provider.cursor", language: lang))
                         .font(.title2.weight(.semibold))
                 }
             }
@@ -374,9 +408,29 @@ struct MenuContent: View {
         }
     }
 
+    private var providerRow: some View {
+        HStack {
+            Text(L10n.string("menu.provider", language: lang))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Picker("", selection: $model.selectedProviderID) {
+                ForEach(UsageProviderRegistry.all.map { $0.id }, id: \.self) { id in
+                    Text(L10n.string(
+                        UsageProviderRegistry.provider(id: id)?.displayNameKey ?? id,
+                        language: lang
+                    )).tag(id)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 240)
+        }
+    }
+
     @ViewBuilder
     private var authSection: some View {
-        let needsAuth = model.errorText != nil || !CursorSession.hasAnyCredential()
+        let provider = model.selectedProvider
+        let needsAuth = model.errorText != nil || model.snapshot == nil
         VStack(alignment: .leading, spacing: 6) {
             Text(L10n.string("menu.cookieSection", language: lang))
                 .font(.caption)
@@ -386,7 +440,7 @@ struct MenuContent: View {
                 .foregroundStyle(needsAuth ? .orange : .secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 4) {
-                Text(L10n.string("menu.cookieName", language: lang))
+                Text(L10n.string(provider?.credentialNameKey ?? "menu.credentialName.cursor", language: lang))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -412,12 +466,12 @@ struct MenuContent: View {
 
     private var cookieHint: String {
         if model.hasManualCookie {
-            return L10n.string("menu.cookieSaved", language: lang)
+            return L10n.string("menu.credentialSaved", language: lang)
         }
-        if CursorSession.hasAnyCredential(), model.errorText == nil {
-            return L10n.string("menu.cookieUsingApp", language: lang)
+        if model.errorText == nil, model.snapshot != nil, let provider = model.selectedProvider {
+            return L10n.string(provider.usingAppKey, language: lang)
         }
-        return L10n.string("menu.authNeeded", language: lang)
+        return L10n.string(model.selectedProvider?.authNeededKey ?? "menu.authNeeded", language: lang)
     }
 
     private var footer: some View {
@@ -509,15 +563,14 @@ struct SpendRow: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
-            ProgressView(value: spend.isUnlimited ? 0 : spend.fraction)
-                .tint(Color.secondary)
+            if spend.remainingUSD == nil {
+                ProgressView(value: spend.isUnlimited ? 0 : spend.fraction)
+                    .tint(Color.secondary)
+            }
         }
     }
 
     private var amountText: String {
-        if spend.isUnlimited || spend.limitUSD == nil {
-            return L10n.format("spend.amountUnlimited", spend.usedUSD, language: language)
-        }
-        return L10n.format("spend.amount", spend.usedUSD, spend.limitUSD ?? 0, language: language)
+        spend.formattedAmount(language: language, compact: false)
     }
 }

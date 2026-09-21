@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="$REPO_ROOT/AIUsageWidget.xcodeproj"
 SCHEME="AIUsageWidget"
-APP_NAME="Cursor使用量.app"
+APP_NAME="AI使用量.app"
 BUNDLE_ID="jp.shigeya.AIUsageWidget"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
