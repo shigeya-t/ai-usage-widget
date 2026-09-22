@@ -521,7 +521,12 @@ struct MenuContent: View {
         if model.hasManualCookie {
             return L10n.string("menu.credentialSaved", language: lang)
         }
-        if model.errorText == nil, model.snapshot != nil, let provider = model.selectedProvider {
+        // 赤字のエラーが出ているときは、そちらが理由を説明している。
+        // ここで「ログインが見つかりません」と重ねると、期限切れの案内と食い違う。
+        if model.errorText != nil {
+            return L10n.string("menu.credentialFallback", language: lang)
+        }
+        if model.snapshot != nil, let provider = model.selectedProvider {
             return L10n.string(provider.usingAppKey, language: lang)
         }
         return L10n.string(model.selectedProvider?.authNeededKey ?? "menu.authNeeded", language: lang)

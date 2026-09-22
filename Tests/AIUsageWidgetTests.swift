@@ -249,6 +249,7 @@ final class L10nTests: XCTestCase {
             "menu.authNeeded.claude",
             "menu.authNeeded.chatgpt",
             "menu.credentialSaved",
+            "menu.credentialFallback",
             "error.unauthorized",
             "error.unauthorized.claude",
             "error.rateLimited",

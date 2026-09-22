@@ -119,6 +119,11 @@ enum L10n {
             .en: "Could not read a Codex session. Sign in to the Codex CLI, or paste an access token. If it expired, open Codex once (this app does not refresh tokens)."
         ],
         "menu.cookieSection": [.ja: "認証", .en: "Authentication"],
+        /// エラーは上に赤字で出ている。ここで別の診断を繰り返さない。
+        "menu.credentialFallback": [
+            .ja: "自動取得に失敗したときは、ここに値を貼り付けてください。",
+            .en: "If the automatic pickup fails, paste a value here."
+        ],
         "menu.cookieSaved": [
             .ja: "手動 Cookie を保存済み。新しい値を貼ると上書きできます。",
             .en: "A manual cookie is saved. Paste a new value to replace it."
