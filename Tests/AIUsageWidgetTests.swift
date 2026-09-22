@@ -249,6 +249,7 @@ final class L10nTests: XCTestCase {
             "menu.authNeeded.claude",
             "menu.authNeeded.chatgpt",
             "menu.credentialSaved",
+            "menu.credentialFallback",
             "error.unauthorized",
             "error.unauthorized.claude",
             "error.rateLimited",
@@ -269,7 +270,8 @@ final class L10nTests: XCTestCase {
                 provider.credentialNameKey,
                 provider.authNeededKey,
                 provider.usingAppKey,
-                "error.unauthorized.\(provider.id)"
+                "error.unauthorized.\(provider.id)",
+                "error.tokenExpired.\(provider.id)"
             ] {
                 assertLocalized(key)
             }
@@ -1015,3 +1017,145 @@ final class DateParsingTests: XCTestCase {
     }
 }
 
+
+final class DashboardURLAllowlistTests: XCTestCase {
+    func testRegisteredDashboardsAreAllowed() {
+        for provider in UsageProviderRegistry.all {
+            XCTAssertTrue(
+                AppSettings.isAllowedDashboardURL(provider.dashboardURL),
+                "\(provider.id) のダッシュボードが弾かれた"
+            )
+        }
+    }
+
+    func testNonHTTPSAndUnknownHostsAreRejected() {
+        let rejected = [
+            "file:///Applications/Calculator.app",
+            "file:///tmp/evil.sh",
+            "http://cursor.com/dashboard?tab=usage",
+            "https://evil.example.com/dashboard?tab=usage",
+            "https://cursor.com/api/usage-summary",
+            "x-evil://run",
+            "https://cursor.com.evil.example/dashboard?tab=usage"
+        ]
+        for raw in rejected {
+            let url = URL(string: raw)!
+            XCTAssertFalse(AppSettings.isAllowedDashboardURL(url), "\(raw) が通ってしまった")
+        }
+    }
+}
+
+final class ClaudeCredsExpiryTests: XCTestCase {
+    private func creds(expiresAt: Double?) -> ClaudeOAuthCreds {
+        ClaudeOAuthCreds(accessToken: "sk-ant-oat01-test", expiresAt: expiresAt)
+    }
+
+    func testMillisecondAndSecondExpiryBothCount() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        XCTAssertTrue(ClaudeSession.isCredsExpired(creds(expiresAt: 1_789_000_000_000), now: now))
+        XCTAssertTrue(ClaudeSession.isCredsExpired(creds(expiresAt: 1_789_000_000), now: now))
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: 1_791_000_000_000), now: now))
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: 1_791_000_000), now: now))
+    }
+
+    func testMissingExpiryIsNotExpired() {
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: nil)))
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: 0)))
+    }
+
+    func testExpiryWithinTheNextMinuteCountsAsExpired() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        XCTAssertTrue(ClaudeSession.isCredsExpired(creds(expiresAt: 1_790_000_030_000), now: now))
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: 1_790_000_120_000), now: now))
+    }
+}
+
+final class KeychainCacheDropTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private var expired: ClaudeOAuthCreds {
+        ClaudeOAuthCreds(accessToken: "sk-ant-oat01-old", expiresAt: 1_789_000_000_000)
+    }
+
+    private var valid: ClaudeOAuthCreds {
+        ClaudeOAuthCreds(accessToken: "sk-ant-oat01-new", expiresAt: 1_791_000_000_000)
+    }
+
+    /// 期限切れは間隔を待たない。Claude Code を起動し直した直後の「更新」で拾えないと意味がない。
+    func testExpiredCredsAreDroppedEvenInsideTheInterval() {
+        XCTAssertTrue(ClaudeSession.shouldDropCache(.creds(expired), lastRetryAt: now, now: now))
+        XCTAssertTrue(
+            ClaudeSession.shouldDropCache(.creds(expired), lastRetryAt: now, now: now.addingTimeInterval(1))
+        )
+    }
+
+    func testValidCredsAreKept() {
+        XCTAssertFalse(ClaudeSession.shouldDropCache(.creds(valid), lastRetryAt: nil, now: now))
+        XCTAssertFalse(
+            ClaudeSession.shouldDropCache(.creds(valid), lastRetryAt: nil, now: now.addingTimeInterval(600))
+        )
+    }
+
+    /// 読めなかった状態からのやり直しはダイアログを出しうるので、ここだけ間隔を空ける。
+    func testMissingAndDeniedFollowTheInterval() {
+        for cache in [ClaudeSession.ClaudeCodeCredsCache.missing, .denied] {
+            XCTAssertTrue(ClaudeSession.shouldDropCache(cache, lastRetryAt: nil, now: now))
+            XCTAssertFalse(ClaudeSession.shouldDropCache(cache, lastRetryAt: now, now: now))
+            XCTAssertFalse(
+                ClaudeSession.shouldDropCache(cache, lastRetryAt: now, now: now.addingTimeInterval(59))
+            )
+            XCTAssertTrue(
+                ClaudeSession.shouldDropCache(cache, lastRetryAt: now, now: now.addingTimeInterval(60))
+            )
+        }
+    }
+
+    func testUnsetIsLeftAlone() {
+        XCTAssertFalse(ClaudeSession.shouldDropCache(.unset, lastRetryAt: nil, now: now))
+    }
+}
+
+final class CursorTempCopyTests: XCTestCase {
+    /// SQLite として開けないファイルは通常／immutable の両方で失敗し、一時コピー経路に落ちる。
+    func testTempCopyCleansUpItselfAndStaleLeftovers() throws {
+        let fm = FileManager.default
+        let broken = fm.temporaryDirectory.appendingPathComponent("broken-\(UUID().uuidString).vscdb")
+        try Data("not a sqlite database".utf8).write(to: broken)
+        defer { try? fm.removeItem(at: broken) }
+
+        // 権限の緩い残骸を置く。固定名のディレクトリを再利用すると 0700 が付かないまま使われる。
+        let base = CursorSession.tempCopyBaseURL
+        let stale = base.appendingPathComponent("stale-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(
+            at: stale,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o777]
+        )
+
+        XCTAssertThrowsError(try CursorSession.readAccessToken(from: broken))
+
+        XCTAssertFalse(fm.fileExists(atPath: stale.path), "残骸が片付いていない")
+        let left = (try? fm.contentsOfDirectory(atPath: base.path)) ?? []
+        XCTAssertTrue(left.isEmpty, "一時コピーが残っている: \(left)")
+    }
+}
+
+final class KeychainRetryThrottleTests: XCTestCase {
+    func testFirstRetryIsAllowed() {
+        XCTAssertTrue(ClaudeSession.keychainRetryAllowed(lastRetryAt: nil, now: Date()))
+    }
+
+    func testRepeatedRetriesAreThrottled() {
+        let now = Date()
+        XCTAssertFalse(ClaudeSession.keychainRetryAllowed(lastRetryAt: now, now: now))
+        XCTAssertFalse(
+            ClaudeSession.keychainRetryAllowed(lastRetryAt: now, now: now.addingTimeInterval(59))
+        )
+        XCTAssertTrue(
+            ClaudeSession.keychainRetryAllowed(lastRetryAt: now, now: now.addingTimeInterval(60))
+        )
+        XCTAssertTrue(
+            ClaudeSession.keychainRetryAllowed(lastRetryAt: now, now: now.addingTimeInterval(600))
+        )
+    }
+}

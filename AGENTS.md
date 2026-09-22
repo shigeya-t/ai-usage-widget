@@ -75,6 +75,18 @@ App が App Group に書いたものを読むだけ。
 - アプリ終了は bundle ID（`tell application id "jp.shigeya.AIUsageWidget"`）
 - `MenuBarExtra(.window)` は `NSApp.activate` しないと TextField が入力を受け取れない
 - Cookie / JWT をログに出さない
+- 通信は `UsageHTTP.session`（ephemeral / Cookie ストアもキャッシュも持たない）を使う。
+  `URLSession.shared` は応答の `Set-Cookie` をディスクへ永続化するので使わない
+- App Group から読んだ値を検証せずに使わない。同一ユーザーの任意プロセスが書ける。
+  ダッシュボードの URL は `AppSettings.isAllowedDashboardURL` を通したものだけを開く
+- 資格情報の入力欄は `SecureField`（`TextField` にしない）
+- Keychain の再試行（`ClaudeSession.shouldDropCache`）の最短間隔は missing / denied にだけ掛ける。
+  外部から更新要求を連投されてもダイアログを繰り返し出さないため。期限切れのキャッシュは
+  間隔を待たずに捨てる（元アプリを開き直した直後の「更新」で拾えないと意味がない）。
+  有効なキャッシュは捨てない（捨てるとダイアログが再び出る）
+- 期限切れ（`tokenExpired`）を「ログインが無い」と同じ文言にまとめない。
+  `error.tokenExpired.<provider id>` で「元アプリを開き直して更新」と案内する。
+  認証欄のヒントと警告色は `errorNeedsCredential` で判断する（rate limit や通信エラーでは出さない）
 
 ## ログ
 

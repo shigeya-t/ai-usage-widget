@@ -74,7 +74,9 @@ This app calls unofficial endpoints using **credentials already stored by the
 local apps**. It does not refresh OAuth tokens (a one-shot refresh would race
 the original app). If a token expired, open the original app once.
 
-Session cookies / JWTs / access tokens are never logged. Only usage snapshots
+Session cookies / JWTs / access tokens are never logged. Requests go through a
+dedicated ephemeral session, so nothing lands in an on-disk cookie store or cache.
+Manually entered credentials live only in the Keychain. Only usage snapshots
 are shared with the widget.
 
 ### Cursor

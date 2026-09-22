@@ -127,12 +127,44 @@ enum ClaudeSession {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// 手動更新のときだけ、前回の Keychain 拒否をやり直す。成功キャッシュは消さない。
-    static func retryKeychainAccess() {
-        claudeCodeBlobLock.lock()
-        defer { claudeCodeBlobLock.unlock() }
-        if case .blob = claudeCodeBlobCache { return }
-        claudeCodeBlobCache = .unset
+    /// 手動更新のときだけ、キャッシュを捨てて読み直す。有効なキャッシュは消さない。
+    static func retryKeychainAccess(now: Date = Date()) {
+        claudeCodeCacheLock.lock()
+        defer { claudeCodeCacheLock.unlock() }
+        guard shouldDropCache(claudeCodeCredsCache, lastRetryAt: lastKeychainRetryAt, now: now) else {
+            return
+        }
+        lastKeychainRetryAt = now
+        claudeCodeCredsCache = .unset
+    }
+
+    /// 期限切れのキャッシュは最短間隔を待たずに捨てる。Claude Code を起動し直した直後の
+    /// 「更新」で新しいトークンを拾えないと意味がなく、一度読めている以上その読み直しは
+    /// 「常に許可」ならダイアログを出さない。
+    ///
+    /// 読めなかった状態（missing / denied）からのやり直しはダイアログを出しうる。更新要求は
+    /// App Group 経由で外からも立てられるので、そこだけ最短間隔を空けて連投を防ぐ。
+    /// 有効なキャッシュは消さない（消すとダイアログが再び出る）。unset は次回そのまま試す。
+    static func shouldDropCache(_ cache: ClaudeCodeCredsCache, lastRetryAt: Date?, now: Date) -> Bool {
+        switch cache {
+        case .unset:
+            return false
+        case .creds(let creds):
+            return isCredsExpired(creds, now: now)
+        case .missing, .denied:
+            return keychainRetryAllowed(lastRetryAt: lastRetryAt, now: now)
+        }
+    }
+
+    static let minimumKeychainRetryInterval: TimeInterval = 60
+
+    static func keychainRetryAllowed(
+        lastRetryAt: Date?,
+        now: Date,
+        minimumInterval: TimeInterval = ClaudeSession.minimumKeychainRetryInterval
+    ) -> Bool {
+        guard let lastRetryAt else { return true }
+        return now.timeIntervalSince(lastRetryAt) >= minimumInterval
     }
 
     static func saveManualToken(_ raw: String) throws {
@@ -267,10 +299,13 @@ enum ClaudeSession {
         return expiry.timeIntervalSince(now) <= 60
     }
 
+    static func isCredsExpired(_ creds: ClaudeOAuthCreds, now: Date = Date()) -> Bool {
+        isExpired(expiresAt: creds.expiresAt, now: now) || isJWTExpired(creds.accessToken, now: now)
+    }
+
     private static func validate(_ creds: ClaudeOAuthCreds) throws {
         if creds.accessToken.isEmpty { throw ClaudeSessionError.tokenMissing }
-        if isExpired(expiresAt: creds.expiresAt) { throw ClaudeSessionError.tokenExpired }
-        if isJWTExpired(creds.accessToken) { throw ClaudeSessionError.tokenExpired }
+        if isCredsExpired(creds) { throw ClaudeSessionError.tokenExpired }
     }
 
     // MARK: - Local stores
@@ -327,12 +362,7 @@ enum ClaudeSession {
             return creds
         }
         // 対話プロンプトは `resolveCredential` 側。ここではキャッシュだけ見る。
-        guard let blob = try readCachedKeychainBlob(interactive: interactiveKeychain),
-              let data = blob.data(using: .utf8)
-        else {
-            return nil
-        }
-        return try parseCredentialsJSON(data)
+        return try readCachedKeychainCreds(interactive: interactiveKeychain)
     }
 
     private static func credentialsFromFiles(_ files: [URL]) -> ClaudeOAuthCreds? {
@@ -374,38 +404,41 @@ enum ClaudeSession {
         return parseAPIKey(from: json)
     }
 
-    private enum ClaudeCodeBlobCache {
+    /// access token だけを保持する。refresh token を含む生の blob はキャッシュしない。
+    enum ClaudeCodeCredsCache {
         case unset
         case missing
         case denied
-        case blob(String)
+        case creds(ClaudeOAuthCreds)
     }
 
-    private enum KeychainCopyResult {
-        case blob(String)
+    private enum KeychainCredsResult {
+        case creds(ClaudeOAuthCreds)
         case missing
         case denied
     }
 
-    private static let claudeCodeBlobLock = NSLock()
-    private static var claudeCodeBlobCache: ClaudeCodeBlobCache = .unset
+    private enum KeychainSecretResult {
+        case secret(String)
+        case missing
+        case denied
+    }
+
+    private static let claudeCodeCacheLock = NSLock()
+    private static var claudeCodeCredsCache: ClaudeCodeCredsCache = .unset
+    private static var lastKeychainRetryAt: Date?
 
     private static func keychainOAuthCredentials() async throws -> ClaudeOAuthCreds? {
-        guard let blob = try await readClaudeCodeKeychainBlob(),
-              let data = blob.data(using: .utf8)
-        else {
-            return nil
-        }
-        return try parseCredentialsJSON(data)
+        try await readClaudeCodeKeychainCreds()
     }
 
     /// プロンプトは出さない。拒否キャッシュは `interactive` のときだけエラーにする。
-    private static func readCachedKeychainBlob(interactive: Bool) throws -> String? {
-        claudeCodeBlobLock.lock()
-        defer { claudeCodeBlobLock.unlock() }
-        switch claudeCodeBlobCache {
-        case .blob(let blob):
-            return blob
+    private static func readCachedKeychainCreds(interactive: Bool) throws -> ClaudeOAuthCreds? {
+        claudeCodeCacheLock.lock()
+        defer { claudeCodeCacheLock.unlock() }
+        switch claudeCodeCredsCache {
+        case .creds(let creds):
+            return creds
         case .missing, .unset:
             return nil
         case .denied:
@@ -415,64 +448,65 @@ enum ClaudeSession {
     }
 
     /// Claude Code の項目は ACL がこのアプリを含まない。`security` の待ちはメインスレッドの外で行う。
-    private static func readClaudeCodeKeychainBlob() async throws -> String? {
-        if let cached = try readCachedKeychainBlob(interactive: true) {
+    private static func readClaudeCodeKeychainCreds() async throws -> ClaudeOAuthCreds? {
+        if let cached = try readCachedKeychainCreds(interactive: true) {
             return cached
         }
         guard beginKeychainPrompt() else {
-            return try readCachedKeychainBlob(interactive: true)
+            return try readCachedKeychainCreds(interactive: true)
         }
-        return try storeKeychainPromptResult(await copyClaudeCodeKeychainBlob())
+        return try storeKeychainPromptResult(await copyClaudeCodeKeychainCreds())
     }
 
     private static func beginKeychainPrompt() -> Bool {
-        claudeCodeBlobLock.lock()
-        defer { claudeCodeBlobLock.unlock() }
-        if case .unset = claudeCodeBlobCache { return true }
+        claudeCodeCacheLock.lock()
+        defer { claudeCodeCacheLock.unlock() }
+        if case .unset = claudeCodeCredsCache { return true }
         return false
     }
 
-    private static func storeKeychainPromptResult(_ result: KeychainCopyResult) throws -> String? {
-        claudeCodeBlobLock.lock()
-        defer { claudeCodeBlobLock.unlock() }
-        if case .blob(let existing) = claudeCodeBlobCache {
+    private static func storeKeychainPromptResult(_ result: KeychainCredsResult) throws -> ClaudeOAuthCreds? {
+        claudeCodeCacheLock.lock()
+        defer { claudeCodeCacheLock.unlock() }
+        if case .creds(let existing) = claudeCodeCredsCache {
             return existing
         }
         switch result {
-        case .blob(let blob):
-            claudeCodeBlobCache = .blob(blob)
-            return blob
+        case .creds(let creds):
+            claudeCodeCredsCache = .creds(creds)
+            return creds
         case .missing:
-            claudeCodeBlobCache = .missing
+            claudeCodeCredsCache = .missing
             return nil
         case .denied:
-            claudeCodeBlobCache = .denied
+            claudeCodeCredsCache = .denied
             throw ClaudeSessionError.keychainDenied
         }
     }
 
-    private static func copyClaudeCodeKeychainBlob() async -> KeychainCopyResult {
+    private static func copyClaudeCodeKeychainCreds() async -> KeychainCredsResult {
         let user = NSUserName()
         var denied = false
 
-        func takeIfOAuth(_ raw: String?) -> String? {
+        /// 生の blob は持ち回さず、その場で access token だけ取り出す。
+        func takeIfOAuth(_ raw: String?) -> ClaudeOAuthCreds? {
             guard let raw, let data = raw.data(using: .utf8) else { return nil }
-            return oauthCredsIfPresent(in: data) == nil ? nil : raw
+            return oauthCredsIfPresent(in: data)
         }
 
         // `/usr/bin/security` はターミナルと同じ経路。SecItem はこのアプリの署名だと項目が見えないことがある。
         for service in keychainServiceNames() {
-            if let blob = takeIfOAuth(await copyViaSecurityCLI(service: service, account: user)) {
+            if let creds = takeIfOAuth(await copyViaSecurityCLI(service: service, account: user)) {
                 usageLogger.error("Claude Code credentials loaded via security CLI")
-                return .blob(blob)
+                return .creds(creds)
             }
         }
 
         await onMain { prepareKeychainPrompt() }
         for service in keychainServiceNames() {
             switch await copySecretResult(service: service, account: user) {
-            case .blob(let raw):
-                if let blob = takeIfOAuth(raw) { return .blob(blob) }
+            case .secret(let raw):
+                if let creds = takeIfOAuth(raw) { return .creds(creds) }
             case .denied:
                 denied = true
             case .missing:
@@ -485,8 +519,8 @@ enum ClaudeSession {
             switch await copySecretResult(service: item.service, account: item.account) {
             case .denied:
                 denied = true
-            case .blob(let raw):
-                if let blob = takeIfOAuth(raw) { return .blob(blob) }
+            case .secret(let raw):
+                if let creds = takeIfOAuth(raw) { return .creds(creds) }
             case .missing:
                 break
             }
@@ -497,7 +531,7 @@ enum ClaudeSession {
         return .missing
     }
 
-    private static func copySecretResult(service: String, account: String) async -> KeychainCopyResult {
+    private static func copySecretResult(service: String, account: String) async -> KeychainSecretResult {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -507,21 +541,21 @@ enum ClaudeSession {
         if !account.isEmpty {
             query[kSecAttrAccount as String] = account
         }
-        switch await copyMatchingClaudeCodeBlob(query) {
-        case .blob(let raw):
-            return .blob(raw)
+        switch await copyMatchingClaudeCodeSecret(query) {
+        case .secret(let raw):
+            return .secret(raw)
         case .denied:
             if let raw = await copyViaSecurityCLI(service: service, account: account) {
-                return .blob(raw)
+                return .secret(raw)
             }
             return .denied
         case .missing:
             if let raw = await copyViaSecurityCLI(service: service, account: account) {
-                return .blob(raw)
+                return .secret(raw)
             }
             query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-            let synced = await copyMatchingClaudeCodeBlob(query)
-            if case .blob(let raw) = synced { return .blob(raw) }
+            let synced = await copyMatchingClaudeCodeSecret(query)
+            if case .secret(let raw) = synced { return .secret(raw) }
             return .missing
         }
     }
@@ -620,15 +654,15 @@ enum ClaudeSession {
         }
     }
 
-    private static func copyMatchingClaudeCodeBlob(_ query: [String: Any]) async -> KeychainCopyResult {
-        await offMain { copyMatchingClaudeCodeBlobSync(query) }
+    private static func copyMatchingClaudeCodeSecret(_ query: [String: Any]) async -> KeychainSecretResult {
+        await offMain { copyMatchingClaudeCodeSecretSync(query) }
     }
 
-    private static func copyMatchingClaudeCodeBlobSync(_ query: [String: Any]) -> KeychainCopyResult {
+    private static func copyMatchingClaudeCodeSecretSync(_ query: [String: Any]) -> KeychainSecretResult {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecSuccess, let data = item as? Data, let blob = String(data: data, encoding: .utf8) {
-            return .blob(blob)
+        if status == errSecSuccess, let data = item as? Data, let secret = String(data: data, encoding: .utf8) {
+            return .secret(secret)
         }
         if status == errSecItemNotFound || status == errSecParam {
             return .missing

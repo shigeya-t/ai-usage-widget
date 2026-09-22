@@ -28,7 +28,9 @@ final class UsageModel: ObservableObject {
             cookieDraft = ""
             hasManualCookie = selectedProvider?.loadManualCredential() != nil
             snapshot = AppSettings.snapshot(providerID: selectedProviderID)
+            // 保存済みメッセージからは種別が分からない。直後の refresh で入れ直す。
             errorText = snapshot?.errorMessage
+            errorNeedsCredential = false
             Task { await refresh() }
         }
     }
@@ -43,6 +45,8 @@ final class UsageModel: ObservableObject {
     }
     @Published var snapshot: UsageSnapshot?
     @Published var errorText: String?
+    /// 資格情報が要るエラーかどうか。通信エラーや rate limit と案内を分ける。
+    @Published private(set) var errorNeedsCredential = false
     @Published var cookieDraft = ""
     @Published private(set) var isPaused: Bool
     @Published private(set) var isRefreshing = false
@@ -110,7 +114,8 @@ final class UsageModel: ObservableObject {
 
     private func openPendingDashboard() {
         guard let url = AppSettings.takePendingDashboardURL() else { return }
-        usageLogger.debug("open dashboard \(url.absoluteString, privacy: .public)")
+        // URL 全体は出さない（外部から差し込まれた値がログに残らないようにする）
+        usageLogger.debug("open dashboard \(url.host ?? "-", privacy: .public)")
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.open(url, configuration: config) { _, error in
@@ -206,6 +211,7 @@ final class UsageModel: ObservableObject {
                 if providerID == selectedProviderID {
                     snapshot = snap
                     errorText = nil
+                    errorNeedsCredential = false
                 }
             } catch {
                 guard !Self.isCancellation(error) else { continue }
@@ -213,6 +219,7 @@ final class UsageModel: ObservableObject {
                 usageLogger.error("refresh failed: \(String(describing: error), privacy: .public)")
                 if providerID == selectedProviderID {
                     errorText = message
+                    errorNeedsCredential = Self.needsCredential(error)
                     if var existing = AppSettings.snapshot(providerID: providerID) {
                         existing.errorMessage = message
                         AppSettings.saveSnapshot(existing)
@@ -268,9 +275,11 @@ final class UsageModel: ObservableObject {
             cookieDraft = ""
             hasManualCookie = true
             errorText = nil
+            errorNeedsCredential = false
             Task { await refresh() }
         } catch {
             errorText = L10n.string(provider.authNeededKey, language: language)
+            errorNeedsCredential = true
         }
     }
 
@@ -285,6 +294,27 @@ final class UsageModel: ObservableObject {
         let url = UsageProviderRegistry.provider(id: selectedProviderID)?.dashboardURL
             ?? URL(string: "https://cursor.com/dashboard?tab=usage")!
         NSWorkspace.shared.open(url)
+    }
+
+    /// 資格情報を入れ直せば解決するエラーか。rate limit や通信エラーは含めない。
+    private static func needsCredential(_ error: Error) -> Bool {
+        if error is CursorSessionError || error is ClaudeSessionError || error is ChatGPTSessionError {
+            return true
+        }
+        if let api = error as? UsageAPIError {
+            switch api {
+            case .unauthorized, .apiKeyMode:
+                return true
+            case .rateLimited, .httpStatus, .decodeFailed:
+                return false
+            }
+        }
+        return false
+    }
+
+    /// 期限切れは「ログインが無い」ではない。元アプリを開き直せば直ると伝える。
+    private static func expiredMessage(provider: any UsageProvider, language: AppLanguage) -> String {
+        L10n.string("error.tokenExpired.\(provider.id)", language: language)
     }
 
     private static func isCancellation(_ error: Error) -> Bool {
@@ -311,14 +341,26 @@ final class UsageModel: ObservableObject {
                 return L10n.string("error.apiKeyMode.claude", language: language)
             case .keychainDenied:
                 return L10n.string("error.keychainDenied.claude", language: language)
-            case .tokenMissing, .tokenExpired, .invalidToken:
+            case .tokenExpired:
+                return expiredMessage(provider: provider, language: language)
+            case .tokenMissing, .invalidToken:
                 return L10n.string(provider.authNeededKey, language: language)
             }
         }
-        if let chatgpt = error as? ChatGPTSessionError, chatgpt == .apiKeyMode {
-            return L10n.string("error.apiKeyMode.chatgpt", language: language)
+        if let chatgpt = error as? ChatGPTSessionError {
+            switch chatgpt {
+            case .apiKeyMode:
+                return L10n.string("error.apiKeyMode.chatgpt", language: language)
+            case .tokenExpired:
+                return expiredMessage(provider: provider, language: language)
+            case .tokenMissing, .invalidToken:
+                return L10n.string(provider.authNeededKey, language: language)
+            }
         }
-        if error is CursorSessionError || error is ClaudeSessionError || error is ChatGPTSessionError {
+        if let cursor = error as? CursorSessionError, cursor == .tokenExpired {
+            return expiredMessage(provider: provider, language: language)
+        }
+        if error is CursorSessionError {
             return L10n.string(provider.authNeededKey, language: language)
         }
         return L10n.format("error.network", error.localizedDescription, language: language)
@@ -464,7 +506,8 @@ struct MenuContent: View {
     @ViewBuilder
     private var authSection: some View {
         let provider = model.selectedProvider
-        let needsAuth = model.errorText != nil || model.snapshot == nil
+        // 通信エラーで一時的に取れないだけのときは警告色にしない
+        let needsAuth = model.errorNeedsCredential || model.snapshot == nil
         VStack(alignment: .leading, spacing: 6) {
             Text(L10n.string("menu.cookieSection", language: lang))
                 .font(.caption)
@@ -479,7 +522,8 @@ struct MenuContent: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-                TextField(L10n.string("menu.cookiePlaceholder", language: lang), text: $model.cookieDraft)
+                // 資格情報を平文表示しない（画面共有・スクショ・肩越しの露出を避ける）
+                SecureField(L10n.string("menu.cookiePlaceholder", language: lang), text: $model.cookieDraft)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.caption, design: .monospaced))
             }
@@ -502,7 +546,12 @@ struct MenuContent: View {
         if model.hasManualCookie {
             return L10n.string("menu.credentialSaved", language: lang)
         }
-        if model.errorText == nil, model.snapshot != nil, let provider = model.selectedProvider {
+        // 資格情報が要るエラーは上に赤字で理由が出ている。ここで「ログインが見つかりません」と
+        // 重ねると期限切れの案内と食い違うので、貼り付け方だけを案内する。
+        if model.errorNeedsCredential {
+            return L10n.string("menu.credentialFallback", language: lang)
+        }
+        if model.snapshot != nil, let provider = model.selectedProvider {
             return L10n.string(provider.usingAppKey, language: lang)
         }
         return L10n.string(model.selectedProvider?.authNeededKey ?? "menu.authNeeded", language: lang)

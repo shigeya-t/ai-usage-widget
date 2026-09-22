@@ -119,6 +119,11 @@ enum L10n {
             .en: "Could not read a Codex session. Sign in to the Codex CLI, or paste an access token. If it expired, open Codex once (this app does not refresh tokens)."
         ],
         "menu.cookieSection": [.ja: "認証", .en: "Authentication"],
+        /// エラーは上に赤字で出ている。ここで別の診断を繰り返さない。
+        "menu.credentialFallback": [
+            .ja: "自動取得に失敗したときは、ここに値を貼り付けてください。",
+            .en: "If the automatic pickup fails, paste a value here."
+        ],
         "menu.cookieSaved": [
             .ja: "手動 Cookie を保存済み。新しい値を貼ると上書きできます。",
             .en: "A manual cookie is saved. Paste a new value to replace it."
@@ -193,6 +198,18 @@ enum L10n {
         "error.unauthorized.chatgpt": [
             .ja: "認証に失敗しました。Codex に再ログインするか、Admin API キーを更新してください。",
             .en: "Authentication failed. Re-sign in to Codex or update the Admin API key."
+        ],
+        "error.tokenExpired.cursor": [
+            .ja: "Cursor のセッションが期限切れです。Cursor.app を一度起動してから「更新」を押してください。",
+            .en: "The Cursor session expired. Open Cursor.app once, then press Refresh."
+        ],
+        "error.tokenExpired.claude": [
+            .ja: "Claude Code のトークンが期限切れです。ターミナルで claude を一度起動してから「更新」を押してください（このアプリはトークンを更新しません）。",
+            .en: "The Claude Code token expired. Run claude in the terminal once, then press Refresh (this app does not refresh tokens)."
+        ],
+        "error.tokenExpired.chatgpt": [
+            .ja: "Codex のトークンが期限切れです。Codex を一度起動してから「更新」を押してください（このアプリはトークンを更新しません）。",
+            .en: "The Codex token expired. Open Codex once, then press Refresh (this app does not refresh tokens)."
         ],
         "error.rateLimited": [
             .ja: "使用量 API が混雑しています。しばらく待ってから更新してください。",
