@@ -28,7 +28,9 @@ final class UsageModel: ObservableObject {
             cookieDraft = ""
             hasManualCookie = selectedProvider?.loadManualCredential() != nil
             snapshot = AppSettings.snapshot(providerID: selectedProviderID)
+            // 保存済みメッセージからは種別が分からない。直後の refresh で入れ直す。
             errorText = snapshot?.errorMessage
+            errorNeedsCredential = false
             Task { await refresh() }
         }
     }
@@ -43,6 +45,8 @@ final class UsageModel: ObservableObject {
     }
     @Published var snapshot: UsageSnapshot?
     @Published var errorText: String?
+    /// 資格情報が要るエラーかどうか。通信エラーや rate limit と案内を分ける。
+    @Published private(set) var errorNeedsCredential = false
     @Published var cookieDraft = ""
     @Published private(set) var isPaused: Bool
     @Published private(set) var isRefreshing = false
@@ -207,6 +211,7 @@ final class UsageModel: ObservableObject {
                 if providerID == selectedProviderID {
                     snapshot = snap
                     errorText = nil
+                    errorNeedsCredential = false
                 }
             } catch {
                 guard !Self.isCancellation(error) else { continue }
@@ -214,6 +219,7 @@ final class UsageModel: ObservableObject {
                 usageLogger.error("refresh failed: \(String(describing: error), privacy: .public)")
                 if providerID == selectedProviderID {
                     errorText = message
+                    errorNeedsCredential = Self.needsCredential(error)
                     if var existing = AppSettings.snapshot(providerID: providerID) {
                         existing.errorMessage = message
                         AppSettings.saveSnapshot(existing)
@@ -269,9 +275,11 @@ final class UsageModel: ObservableObject {
             cookieDraft = ""
             hasManualCookie = true
             errorText = nil
+            errorNeedsCredential = false
             Task { await refresh() }
         } catch {
             errorText = L10n.string(provider.authNeededKey, language: language)
+            errorNeedsCredential = true
         }
     }
 
@@ -286,6 +294,22 @@ final class UsageModel: ObservableObject {
         let url = UsageProviderRegistry.provider(id: selectedProviderID)?.dashboardURL
             ?? URL(string: "https://cursor.com/dashboard?tab=usage")!
         NSWorkspace.shared.open(url)
+    }
+
+    /// 資格情報を入れ直せば解決するエラーか。rate limit や通信エラーは含めない。
+    private static func needsCredential(_ error: Error) -> Bool {
+        if error is CursorSessionError || error is ClaudeSessionError || error is ChatGPTSessionError {
+            return true
+        }
+        if let api = error as? UsageAPIError {
+            switch api {
+            case .unauthorized, .apiKeyMode:
+                return true
+            case .rateLimited, .httpStatus, .decodeFailed:
+                return false
+            }
+        }
+        return false
     }
 
     /// 期限切れは「ログインが無い」ではない。元アプリを開き直せば直ると伝える。
@@ -482,7 +506,8 @@ struct MenuContent: View {
     @ViewBuilder
     private var authSection: some View {
         let provider = model.selectedProvider
-        let needsAuth = model.errorText != nil || model.snapshot == nil
+        // 通信エラーで一時的に取れないだけのときは警告色にしない
+        let needsAuth = model.errorNeedsCredential || model.snapshot == nil
         VStack(alignment: .leading, spacing: 6) {
             Text(L10n.string("menu.cookieSection", language: lang))
                 .font(.caption)
@@ -521,9 +546,9 @@ struct MenuContent: View {
         if model.hasManualCookie {
             return L10n.string("menu.credentialSaved", language: lang)
         }
-        // 赤字のエラーが出ているときは、そちらが理由を説明している。
-        // ここで「ログインが見つかりません」と重ねると、期限切れの案内と食い違う。
-        if model.errorText != nil {
+        // 資格情報が要るエラーは上に赤字で理由が出ている。ここで「ログインが見つかりません」と
+        // 重ねると期限切れの案内と食い違うので、貼り付け方だけを案内する。
+        if model.errorNeedsCredential {
             return L10n.string("menu.credentialFallback", language: lang)
         }
         if model.snapshot != nil, let provider = model.selectedProvider {

@@ -127,29 +127,32 @@ enum ClaudeSession {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// 手動更新のときだけ、前回の Keychain 拒否／不在をやり直す。成功キャッシュは消さない。
-    /// 更新要求は App Group 経由で外からも立てられるので、最短間隔を置いて
-    /// Keychain ダイアログの連投（「許可」を押させる誘導）を防ぐ。
+    /// 手動更新のときだけ、キャッシュを捨てて読み直す。有効なキャッシュは消さない。
     static func retryKeychainAccess(now: Date = Date()) {
         claudeCodeCacheLock.lock()
         defer { claudeCodeCacheLock.unlock() }
-        guard shouldDropCache(claudeCodeCredsCache, now: now) else { return }
-        guard keychainRetryAllowed(lastRetryAt: lastKeychainRetryAt, now: now) else { return }
+        guard shouldDropCache(claudeCodeCredsCache, lastRetryAt: lastKeychainRetryAt, now: now) else {
+            return
+        }
         lastKeychainRetryAt = now
         claudeCodeCredsCache = .unset
     }
 
-    /// 期限切れのキャッシュは捨てる。Claude Code を起動し直したあと、アプリを終了せずに
-    /// 「更新」で新しいトークンを拾い直せるようにする。有効なキャッシュは消さない
-    /// （消すと Keychain ダイアログが再び出る）。unset は次回そのまま試す。
-    private static func shouldDropCache(_ cache: ClaudeCodeCredsCache, now: Date) -> Bool {
+    /// 期限切れのキャッシュは最短間隔を待たずに捨てる。Claude Code を起動し直した直後の
+    /// 「更新」で新しいトークンを拾えないと意味がなく、一度読めている以上その読み直しは
+    /// 「常に許可」ならダイアログを出さない。
+    ///
+    /// 読めなかった状態（missing / denied）からのやり直しはダイアログを出しうる。更新要求は
+    /// App Group 経由で外からも立てられるので、そこだけ最短間隔を空けて連投を防ぐ。
+    /// 有効なキャッシュは消さない（消すとダイアログが再び出る）。unset は次回そのまま試す。
+    static func shouldDropCache(_ cache: ClaudeCodeCredsCache, lastRetryAt: Date?, now: Date) -> Bool {
         switch cache {
         case .unset:
             return false
-        case .missing, .denied:
-            return true
         case .creds(let creds):
             return isCredsExpired(creds, now: now)
+        case .missing, .denied:
+            return keychainRetryAllowed(lastRetryAt: lastRetryAt, now: now)
         }
     }
 
@@ -402,7 +405,7 @@ enum ClaudeSession {
     }
 
     /// access token だけを保持する。refresh token を含む生の blob はキャッシュしない。
-    private enum ClaudeCodeCredsCache {
+    enum ClaudeCodeCredsCache {
         case unset
         case missing
         case denied

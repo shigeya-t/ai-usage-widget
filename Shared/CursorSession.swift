@@ -141,17 +141,21 @@ enum CursorSession {
 
     /// コピーは access token を含む DB 丸ごとなので、専用ディレクトリ（0700）に 0600 で置く。
     /// `copyItem` はコピー元の権限（通常 0644）を引き継ぐため、明示的に絞る。
-    /// 前回の異常終了で残ったコピーはここで片付ける。
+    ///
+    /// ディレクトリは呼び出しごとに新しくし、`withIntermediateDirectories: false` で作る。
+    /// 既存を作成成功として扱うと、権限の付いていないディレクトリにコピーしてしまう。
     private static func readAccessTokenViaTempCopy(dbURL: URL) throws -> String {
         let fm = FileManager.default
-        let dir = fm.temporaryDirectory.appendingPathComponent("aiusage-cursor-state", isDirectory: true)
-        try? fm.removeItem(at: dir)
+        let base = tempCopyBaseURL
+        removeStaleTempCopies(in: base)
+        let dir = base.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let tmp = dir.appendingPathComponent("state.vscdb")
         defer { try? fm.removeItem(at: dir) }
-        let tmp = dir.appendingPathComponent("\(UUID().uuidString).vscdb")
         do {
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
             try fm.createDirectory(
                 at: dir,
-                withIntermediateDirectories: true,
+                withIntermediateDirectories: false,
                 attributes: [.posixPermissions: 0o700]
             )
             try fm.copyItem(at: dbURL, to: tmp)
@@ -161,6 +165,27 @@ enum CursorSession {
             throw CursorSessionError.databaseOpenFailed
         }
         return try readAccessTokenOpening(dbURL: tmp, immutable: true)
+    }
+
+    static var tempCopyBaseURL: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("aiusage-cursor-state", isDirectory: true)
+    }
+
+    /// 異常終了で残ったコピーを片付ける。消せないものは放置してよい。
+    /// 取得は直列なので、実行中のコピーをここで消すことはない。
+    private static func removeStaleTempCopies(in base: URL) {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: base,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+        for entry in entries {
+            try? fm.removeItem(at: entry)
+        }
     }
 
     private static func readAccessTokenOpening(dbURL: URL, immutable: Bool) throws -> String {
