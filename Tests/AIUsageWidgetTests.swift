@@ -269,7 +269,8 @@ final class L10nTests: XCTestCase {
                 provider.credentialNameKey,
                 provider.authNeededKey,
                 provider.usingAppKey,
-                "error.unauthorized.\(provider.id)"
+                "error.unauthorized.\(provider.id)",
+                "error.tokenExpired.\(provider.id)"
             ] {
                 assertLocalized(key)
             }
@@ -1040,6 +1041,31 @@ final class DashboardURLAllowlistTests: XCTestCase {
             let url = URL(string: raw)!
             XCTAssertFalse(AppSettings.isAllowedDashboardURL(url), "\(raw) が通ってしまった")
         }
+    }
+}
+
+final class ClaudeCredsExpiryTests: XCTestCase {
+    private func creds(expiresAt: Double?) -> ClaudeOAuthCreds {
+        ClaudeOAuthCreds(accessToken: "sk-ant-oat01-test", expiresAt: expiresAt)
+    }
+
+    func testMillisecondAndSecondExpiryBothCount() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        XCTAssertTrue(ClaudeSession.isCredsExpired(creds(expiresAt: 1_789_000_000_000), now: now))
+        XCTAssertTrue(ClaudeSession.isCredsExpired(creds(expiresAt: 1_789_000_000), now: now))
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: 1_791_000_000_000), now: now))
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: 1_791_000_000), now: now))
+    }
+
+    func testMissingExpiryIsNotExpired() {
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: nil)))
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: 0)))
+    }
+
+    func testExpiryWithinTheNextMinuteCountsAsExpired() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        XCTAssertTrue(ClaudeSession.isCredsExpired(creds(expiresAt: 1_790_000_030_000), now: now))
+        XCTAssertFalse(ClaudeSession.isCredsExpired(creds(expiresAt: 1_790_000_120_000), now: now))
     }
 }
 

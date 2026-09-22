@@ -288,6 +288,11 @@ final class UsageModel: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
+    /// 期限切れは「ログインが無い」ではない。元アプリを開き直せば直ると伝える。
+    private static func expiredMessage(provider: any UsageProvider, language: AppLanguage) -> String {
+        L10n.string("error.tokenExpired.\(provider.id)", language: language)
+    }
+
     private static func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         return (error as? URLError)?.code == .cancelled
@@ -312,14 +317,26 @@ final class UsageModel: ObservableObject {
                 return L10n.string("error.apiKeyMode.claude", language: language)
             case .keychainDenied:
                 return L10n.string("error.keychainDenied.claude", language: language)
-            case .tokenMissing, .tokenExpired, .invalidToken:
+            case .tokenExpired:
+                return expiredMessage(provider: provider, language: language)
+            case .tokenMissing, .invalidToken:
                 return L10n.string(provider.authNeededKey, language: language)
             }
         }
-        if let chatgpt = error as? ChatGPTSessionError, chatgpt == .apiKeyMode {
-            return L10n.string("error.apiKeyMode.chatgpt", language: language)
+        if let chatgpt = error as? ChatGPTSessionError {
+            switch chatgpt {
+            case .apiKeyMode:
+                return L10n.string("error.apiKeyMode.chatgpt", language: language)
+            case .tokenExpired:
+                return expiredMessage(provider: provider, language: language)
+            case .tokenMissing, .invalidToken:
+                return L10n.string(provider.authNeededKey, language: language)
+            }
         }
-        if error is CursorSessionError || error is ClaudeSessionError || error is ChatGPTSessionError {
+        if let cursor = error as? CursorSessionError, cursor == .tokenExpired {
+            return expiredMessage(provider: provider, language: language)
+        }
+        if error is CursorSessionError {
             return L10n.string(provider.authNeededKey, language: language)
         }
         return L10n.format("error.network", error.localizedDescription, language: language)

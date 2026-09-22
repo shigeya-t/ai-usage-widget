@@ -133,14 +133,23 @@ enum ClaudeSession {
     static func retryKeychainAccess(now: Date = Date()) {
         claudeCodeCacheLock.lock()
         defer { claudeCodeCacheLock.unlock() }
-        switch claudeCodeCredsCache {
-        case .creds, .unset:
-            // 成功キャッシュは消さない。unset は次回そのまま試す。
-            return
+        guard shouldDropCache(claudeCodeCredsCache, now: now) else { return }
+        guard keychainRetryAllowed(lastRetryAt: lastKeychainRetryAt, now: now) else { return }
+        lastKeychainRetryAt = now
+        claudeCodeCredsCache = .unset
+    }
+
+    /// 期限切れのキャッシュは捨てる。Claude Code を起動し直したあと、アプリを終了せずに
+    /// 「更新」で新しいトークンを拾い直せるようにする。有効なキャッシュは消さない
+    /// （消すと Keychain ダイアログが再び出る）。unset は次回そのまま試す。
+    private static func shouldDropCache(_ cache: ClaudeCodeCredsCache, now: Date) -> Bool {
+        switch cache {
+        case .unset:
+            return false
         case .missing, .denied:
-            guard keychainRetryAllowed(lastRetryAt: lastKeychainRetryAt, now: now) else { return }
-            lastKeychainRetryAt = now
-            claudeCodeCredsCache = .unset
+            return true
+        case .creds(let creds):
+            return isCredsExpired(creds, now: now)
         }
     }
 
@@ -287,10 +296,13 @@ enum ClaudeSession {
         return expiry.timeIntervalSince(now) <= 60
     }
 
+    static func isCredsExpired(_ creds: ClaudeOAuthCreds, now: Date = Date()) -> Bool {
+        isExpired(expiresAt: creds.expiresAt, now: now) || isJWTExpired(creds.accessToken, now: now)
+    }
+
     private static func validate(_ creds: ClaudeOAuthCreds) throws {
         if creds.accessToken.isEmpty { throw ClaudeSessionError.tokenMissing }
-        if isExpired(expiresAt: creds.expiresAt) { throw ClaudeSessionError.tokenExpired }
-        if isJWTExpired(creds.accessToken) { throw ClaudeSessionError.tokenExpired }
+        if isCredsExpired(creds) { throw ClaudeSessionError.tokenExpired }
     }
 
     // MARK: - Local stores

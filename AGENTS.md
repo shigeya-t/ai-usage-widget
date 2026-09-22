@@ -81,7 +81,10 @@ App が App Group に書いたものを読むだけ。
   ダッシュボードの URL は `AppSettings.isAllowedDashboardURL` を通したものだけを開く
 - 資格情報の入力欄は `SecureField`（`TextField` にしない）
 - Keychain の再試行は `ClaudeSession.retryKeychainAccess` のレート制限を外さない
-  （外部から更新要求を連投されてもダイアログを繰り返し出さないため）
+  （外部から更新要求を連投されてもダイアログを繰り返し出さないため）。
+  期限切れのキャッシュだけは「更新」で捨てる。有効なキャッシュを捨てるとダイアログが再び出る
+- 期限切れ（`tokenExpired`）を「ログインが無い」と同じ文言にまとめない。
+  `error.tokenExpired.<provider id>` で「元アプリを開き直して更新」と案内する
 
 ## ログ
 

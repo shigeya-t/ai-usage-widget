@@ -194,6 +194,18 @@ enum L10n {
             .ja: "認証に失敗しました。Codex に再ログインするか、Admin API キーを更新してください。",
             .en: "Authentication failed. Re-sign in to Codex or update the Admin API key."
         ],
+        "error.tokenExpired.cursor": [
+            .ja: "Cursor のセッションが期限切れです。Cursor.app を一度起動してから「更新」を押してください。",
+            .en: "The Cursor session expired. Open Cursor.app once, then press Refresh."
+        ],
+        "error.tokenExpired.claude": [
+            .ja: "Claude Code のトークンが期限切れです。ターミナルで claude を一度起動してから「更新」を押してください（このアプリはトークンを更新しません）。",
+            .en: "The Claude Code token expired. Run claude in the terminal once, then press Refresh (this app does not refresh tokens)."
+        ],
+        "error.tokenExpired.chatgpt": [
+            .ja: "Codex のトークンが期限切れです。Codex を一度起動してから「更新」を押してください（このアプリはトークンを更新しません）。",
+            .en: "The Codex token expired. Open Codex once, then press Refresh (this app does not refresh tokens)."
+        ],
         "error.rateLimited": [
             .ja: "使用量 API が混雑しています。しばらく待ってから更新してください。",
             .en: "The usage API is rate-limited. Wait a bit, then refresh."
