@@ -65,7 +65,7 @@ struct ChatGPTProvider: UsageProvider {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(browserUA, forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await UsageHTTP.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
@@ -107,7 +107,7 @@ struct ChatGPTProvider: UsageProvider {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("AIUsageWidget/1.1", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await UsageHTTP.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }

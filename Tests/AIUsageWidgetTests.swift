@@ -1015,3 +1015,50 @@ final class DateParsingTests: XCTestCase {
     }
 }
 
+
+final class DashboardURLAllowlistTests: XCTestCase {
+    func testRegisteredDashboardsAreAllowed() {
+        for provider in UsageProviderRegistry.all {
+            XCTAssertTrue(
+                AppSettings.isAllowedDashboardURL(provider.dashboardURL),
+                "\(provider.id) のダッシュボードが弾かれた"
+            )
+        }
+    }
+
+    func testNonHTTPSAndUnknownHostsAreRejected() {
+        let rejected = [
+            "file:///Applications/Calculator.app",
+            "file:///tmp/evil.sh",
+            "http://cursor.com/dashboard?tab=usage",
+            "https://evil.example.com/dashboard?tab=usage",
+            "https://cursor.com/api/usage-summary",
+            "x-evil://run",
+            "https://cursor.com.evil.example/dashboard?tab=usage"
+        ]
+        for raw in rejected {
+            let url = URL(string: raw)!
+            XCTAssertFalse(AppSettings.isAllowedDashboardURL(url), "\(raw) が通ってしまった")
+        }
+    }
+}
+
+final class KeychainRetryThrottleTests: XCTestCase {
+    func testFirstRetryIsAllowed() {
+        XCTAssertTrue(ClaudeSession.keychainRetryAllowed(lastRetryAt: nil, now: Date()))
+    }
+
+    func testRepeatedRetriesAreThrottled() {
+        let now = Date()
+        XCTAssertFalse(ClaudeSession.keychainRetryAllowed(lastRetryAt: now, now: now))
+        XCTAssertFalse(
+            ClaudeSession.keychainRetryAllowed(lastRetryAt: now, now: now.addingTimeInterval(59))
+        )
+        XCTAssertTrue(
+            ClaudeSession.keychainRetryAllowed(lastRetryAt: now, now: now.addingTimeInterval(60))
+        )
+        XCTAssertTrue(
+            ClaudeSession.keychainRetryAllowed(lastRetryAt: now, now: now.addingTimeInterval(600))
+        )
+    }
+}

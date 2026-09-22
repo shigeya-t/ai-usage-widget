@@ -75,6 +75,13 @@ App が App Group に書いたものを読むだけ。
 - アプリ終了は bundle ID（`tell application id "jp.shigeya.AIUsageWidget"`）
 - `MenuBarExtra(.window)` は `NSApp.activate` しないと TextField が入力を受け取れない
 - Cookie / JWT をログに出さない
+- 通信は `UsageHTTP.session`（ephemeral / Cookie ストアもキャッシュも持たない）を使う。
+  `URLSession.shared` は応答の `Set-Cookie` をディスクへ永続化するので使わない
+- App Group から読んだ値を検証せずに使わない。同一ユーザーの任意プロセスが書ける。
+  ダッシュボードの URL は `AppSettings.isAllowedDashboardURL` を通したものだけを開く
+- 資格情報の入力欄は `SecureField`（`TextField` にしない）
+- Keychain の再試行は `ClaudeSession.retryKeychainAccess` のレート制限を外さない
+  （外部から更新要求を連投されてもダイアログを繰り返し出さないため）
 
 ## ログ
 

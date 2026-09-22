@@ -18,10 +18,11 @@ enum AppSettings {
         if isValidGroupID(plist) { return plist }
         if let team = signingTeamID() {
             let resolved = "\(team).\(groupSuffix)"
-            usageLogger.error("Info.plist の AppGroupID が不正（\(plist, privacy: .public)）のため署名から組み立てます: \(resolved, privacy: .public)")
+            // Team ID を含むのでログには残さない
+            usageLogger.error("Info.plist の AppGroupID が不正（\(plist, privacy: .private)）のため署名から組み立てます: \(resolved, privacy: .private)")
             return resolved
         }
-        usageLogger.error("App Group を利用できません（AppGroupID=\(plist, privacy: .public)）")
+        usageLogger.error("App Group を利用できません（AppGroupID=\(plist, privacy: .private)）")
         return plist
     }()
 
@@ -166,7 +167,19 @@ enum AppSettings {
         }
         defaults.removeObject(forKey: Keys.pendingDashboardURL)
         defaults.synchronize()
-        return URL(string: raw)
+        guard let url = URL(string: raw), isAllowedDashboardURL(url) else {
+            usageLogger.error("想定外のダッシュボード URL を破棄しました")
+            return nil
+        }
+        return url
+    }
+
+    /// App Group は同一ユーザーの任意プロセスが書ける。distributed notification にも送信者の認証がない。
+    /// 非サンドボックスの常駐アプリに任意の URL（`file://` を含む）を開かせないため、
+    /// 登録済みプロバイダのダッシュボードだけを通す。
+    static func isAllowedDashboardURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https" else { return false }
+        return UsageProviderRegistry.all.contains { $0.dashboardURL == url }
     }
 
     /// App Group コンテナ。UserDefaults だけだと拡張側のキャッシュで古い値が残ることがある。

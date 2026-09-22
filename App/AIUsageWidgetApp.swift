@@ -110,7 +110,8 @@ final class UsageModel: ObservableObject {
 
     private func openPendingDashboard() {
         guard let url = AppSettings.takePendingDashboardURL() else { return }
-        usageLogger.debug("open dashboard \(url.absoluteString, privacy: .public)")
+        // URL 全体は出さない（外部から差し込まれた値がログに残らないようにする）
+        usageLogger.debug("open dashboard \(url.host ?? "-", privacy: .public)")
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.open(url, configuration: config) { _, error in
@@ -479,7 +480,8 @@ struct MenuContent: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-                TextField(L10n.string("menu.cookiePlaceholder", language: lang), text: $model.cookieDraft)
+                // 資格情報を平文表示しない（画面共有・スクショ・肩越しの露出を避ける）
+                SecureField(L10n.string("menu.cookiePlaceholder", language: lang), text: $model.cookieDraft)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.caption, design: .monospaced))
             }

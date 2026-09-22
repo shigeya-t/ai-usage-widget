@@ -139,16 +139,27 @@ enum CursorSession {
         }
     }
 
+    /// コピーは access token を含む DB 丸ごとなので、専用ディレクトリ（0700）に 0600 で置く。
+    /// `copyItem` はコピー元の権限（通常 0644）を引き継ぐため、明示的に絞る。
+    /// 前回の異常終了で残ったコピーはここで片付ける。
     private static func readAccessTokenViaTempCopy(dbURL: URL) throws -> String {
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("aiusage-cursor-state-\(UUID().uuidString).vscdb")
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("aiusage-cursor-state", isDirectory: true)
+        try? fm.removeItem(at: dir)
+        defer { try? fm.removeItem(at: dir) }
+        let tmp = dir.appendingPathComponent("\(UUID().uuidString).vscdb")
         do {
-            try FileManager.default.copyItem(at: dbURL, to: tmp)
+            try fm.createDirectory(
+                at: dir,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try fm.copyItem(at: dbURL, to: tmp)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tmp.path)
         } catch {
             usageLogger.error("session db copy failed: \(error.localizedDescription, privacy: .public)")
             throw CursorSessionError.databaseOpenFailed
         }
-        defer { try? FileManager.default.removeItem(at: tmp) }
         return try readAccessTokenOpening(dbURL: tmp, immutable: true)
     }
 

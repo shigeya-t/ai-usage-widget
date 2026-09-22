@@ -53,7 +53,7 @@ struct CursorProvider: UsageProvider {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(browserUA, forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await UsageHTTP.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
@@ -81,7 +81,7 @@ struct CursorProvider: UsageProvider {
         request.setValue("https://cursor.com", forHTTPHeaderField: "Origin")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(browserUA, forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await UsageHTTP.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CursorAPIError.unauthorized
         }
@@ -100,7 +100,7 @@ struct CursorProvider: UsageProvider {
         request.setValue(browserUA, forHTTPHeaderField: "User-Agent")
         request.httpBody = Data("{}".utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await UsageHTTP.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             return nil
         }
