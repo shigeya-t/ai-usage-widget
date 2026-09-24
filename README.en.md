@@ -139,6 +139,9 @@ From top to bottom: current plan name and price → service switch → error tex
 and days left → account label → per-window meters → spend → last updated → language switch → the
 authentication section → **Open Dashboard** → **Pause / Resume**, **Refresh Now**, **Quit** → build stamp.
 
+The reset date is when the usage allowance next returns. It is a different date from the subscription
+renewal (the day you are charged).
+
 **Open Dashboard** opens the official page for the selected service in your browser.
 
 | Service | Page |
