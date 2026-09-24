@@ -63,7 +63,7 @@ Cursor のダッシュボードには Plan & Usage のページがあります�
 | サービス | 主な取得元 | 見られるもの | 必要なログイン |
 | --- | --- | --- | --- |
 | **Cursor** | `cursor.com`（非公式 API） | Cursor Models / Other Models / Grok Bot の使用率、オンデマンド課金の金額 | Cursor.app へのログイン |
-| **Claude** | `api.anthropic.com`（OAuth 非公式 API） | 5時間枠・週次枠・週次 Opus / Sonnet の使用率、追加クレジットの金額 | Claude Code（CLI）へのログイン |
+| **Claude** | `api.anthropic.com`（OAuth 非公式 API） | 5時間枠・週次枠・週次 Opus / Sonnet の使用率、クラウドセッションクレジット、追加クレジットの金額 | Claude Code（CLI）へのログイン |
 | **Claude（API キーのみ）** | 公式 Cost API | 今月の API 費用 | `sk-ant-admin01-` などの Admin キー |
 | **Codex** | `chatgpt.com`（非公式 API） | メイン枠・サブ枠・コードレビュー枠の使用率、追加クレジットの残高 | Codex CLI へのログイン（ChatGPT アカウント） |
 | **Codex（API キーのみ）** | 公式 Cost API | 今月の API 費用 | OpenAI の Admin キー |
@@ -171,6 +171,7 @@ DEVELOPMENT_TEAM=XXXXXXXXXX ./scripts/deploy-local.sh
 | オンデマンド | Cursor | 上限を超えた分の後払い金額（使用額 / 上限、または「無制限」） |
 | 5時間枠 | Claude | セッション単位の短いリセット周期 |
 | 週次枠 / 週次 Opus / 週次 Sonnet | Claude | 7 日単位の枠。モデル別の枠がある場合は分けて出ます |
+| クラウドセッションクレジット | Claude | クラウドセッション用のワンタイムクレジット。残り額と期限を出します。プラン枠の％には含めません |
 | 追加クレジット | Claude | プラン枠を超えた分の従量課金。残高切れのときはその旨を出します |
 | メイン枠 / サブ枠 | Codex | API が返すリセット周期から、5時間枠・日次枠・週次枠・月次枠として名前を付けます |
 | コードレビュー | Codex | コードレビュー用の枠 |

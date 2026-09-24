@@ -44,6 +44,26 @@ enum L10n {
         "meter.sevenDay.subtitle": [.ja: "すべてのモデル", .en: "All models"],
         "meter.sevenDayOpus": [.ja: "週次 Opus", .en: "Weekly Opus"],
         "meter.sevenDaySonnet": [.ja: "週次 Sonnet", .en: "Weekly Sonnet"],
+        "meter.cloudSessionCredit": [.ja: "クラウドセッションクレジット", .en: "Cloud session credits"],
+        "meter.cloudSessionCredit.subtitle": [
+            .ja: "ワンタイムのセッション枠",
+            .en: "One-time session credit"
+        ],
+        "meter.cloudSessionCredit.expires": [
+            .ja: "ワンタイム · %@まで",
+            .en: "One-time · expires %@"
+        ],
+        "spend.cloudSessionCredit": [.ja: "クラウドセッションクレジット", .en: "Cloud session credits"],
+        "spend.cloudSessionCredit.subtitle": [
+            .ja: "含まれるクレジット",
+            .en: "Included credits"
+        ],
+        "spend.cloudSessionCredit.expires": [
+            .ja: "%@に期限切れ",
+            .en: "Expires %@"
+        ],
+        "spend.remaining": [.ja: "残 $%.0f / $%.0f", .en: "$%.0f left / $%.0f"],
+        "spend.remaining.compact": [.ja: "残$%.0f/$%.0f", .en: "$%.0f/$%.0f left"],
         "meter.window.primary": [.ja: "メイン枠", .en: "Primary"],
         "meter.window.secondary": [.ja: "サブ枠", .en: "Secondary"],
         "meter.window.fiveHour": [.ja: "5時間枠", .en: "5-hour"],

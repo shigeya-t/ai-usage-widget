@@ -7,12 +7,22 @@ struct UsageSnapshot: Codable, Equatable {
     var plan: PlanInfo
     var meters: [UsageMeter]
     var spend: SpendMeter?
+    /// 追加クレジットの前後に出す金額行。旧スナップショットには無い。
+    var spends: [SpendMeter]? = nil
     var fetchedAt: Date
     var errorMessage: String?
 
-    /// メーターがあれば最大％。API 費用だけなら金額。どちらも無ければ nil。
+    var spendRows: [SpendMeter] {
+        if let spends, !spends.isEmpty { return spends }
+        return spend.map { [$0] } ?? []
+    }
+
+    /// メーターがあれば最大％。クラウドクレジットのような補助枠は代表値から外す。
+    /// API 費用だけなら金額。どちらも無ければ nil。
     func menuBarValue(language: AppLanguage) -> String? {
-        if let worst = meters.map(\.displayPercent).max() {
+        let ranked = meters.filter { $0.omitFromMenuBar != true }
+        let source = ranked.isEmpty ? meters : ranked
+        if let worst = source.map(\.displayPercent).max() {
             return "\(worst)%"
         }
         if let spend {
@@ -50,6 +60,19 @@ struct UsageMeter: Codable, Equatable, Identifiable {
     var accent: MeterAccent
     /// 大ウィジェット用の注記。旧スナップショットには無い。
     var noteKey: String? = nil
+    /// メニューバーの代表％に含めない。nil は含める（旧スナップショット）。
+    var omitFromMenuBar: Bool? = nil
+    /// 字幕を日付つきで出すときだけ入る。`subtitleKey` は `%@` を含む。
+    var expiresAt: Date? = nil
+
+    func subtitle(language: AppLanguage) -> String? {
+        guard let subtitleKey else { return nil }
+        guard let expiresAt else {
+            return L10n.string(subtitleKey, language: language)
+        }
+        let dateText = UsageFormatting.monthDay(expiresAt, language: language)
+        return L10n.format(subtitleKey, dateText, language: language)
+    }
 
     enum MeterAccent: String, Codable {
         case primary
@@ -79,12 +102,24 @@ struct SpendMeter: Codable, Equatable {
     var remainingUSD: Double? = nil
     /// nil はドル（旧スナップショット互換）。
     var unit: SpendUnit? = nil
+    /// true のとき金額は残り / 上限。旧スナップショットには無い。
+    var amountIsRemaining: Bool? = nil
+    var subtitleKey: String? = nil
+    var expiresAt: Date? = nil
 
     var displayUnit: SpendUnit { unit ?? .usd }
 
     var fraction: Double {
         guard remainingUSD == nil, let limitUSD, limitUSD > 0, !isUnlimited else { return 0 }
         return min(max(usedUSD / limitUSD, 0), 1)
+    }
+
+    func subtitle(language: AppLanguage) -> String? {
+        guard let subtitleKey else { return nil }
+        guard let expiresAt else {
+            return L10n.string(subtitleKey, language: language)
+        }
+        return L10n.format(subtitleKey, UsageFormatting.expiryDate(expiresAt, language: language), language: language)
     }
 
     func formattedAmount(language: AppLanguage, compact: Bool) -> String {
@@ -105,6 +140,15 @@ struct SpendMeter: Codable, Equatable {
             return L10n.format(
                 compact ? "spend.amountUnlimited.compact" : "spend.amountUnlimited",
                 usedUSD,
+                language: language
+            )
+        }
+        if amountIsRemaining == true {
+            let remaining = max((limitUSD ?? 0) - usedUSD, 0)
+            return L10n.format(
+                compact ? "spend.remaining.compact" : "spend.remaining",
+                remaining,
+                limitUSD ?? 0,
                 language: language
             )
         }
@@ -142,6 +186,20 @@ enum UsageFormatting {
         if value <= 0 { return 0 }
         if value < 1 { return 1 }
         return Int(value.rounded())
+    }
+
+    static func expiryDate(_ date: Date, language: AppLanguage) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = L10n.locale(for: language)
+        formatter.dateFormat = language == .ja ? "M月d日 H:mm" : "MMM d, HH:mm"
+        return formatter.string(from: date)
+    }
+
+    static func monthDay(_ date: Date, language: AppLanguage) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = L10n.locale(for: language)
+        formatter.dateFormat = language == .ja ? "M月d日" : "MMM d"
+        return formatter.string(from: date)
     }
 
     /// クレジット数。整数なら桁を落とす。

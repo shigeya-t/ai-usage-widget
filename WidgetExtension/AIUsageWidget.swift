@@ -140,7 +140,7 @@ struct AIUsageWidgetEntryView: View {
             ForEach(snapshot.meters) { meter in
                 meterBlock(meter)
             }
-            if let spend = snapshot.spend {
+            ForEach(snapshot.spendRows, id: \.id) { spend in
                 spendBlock(spend)
             }
             if entry.isPaused {
@@ -206,8 +206,8 @@ struct AIUsageWidgetEntryView: View {
                     .minimumScaleFactor(0.7)
                     .layoutPriority(0)
             }
-            if !isSmall, let subtitleKey = meter.subtitleKey {
-                Text(L10n.string(subtitleKey, language: lang))
+            if !isSmall, let subtitle = meter.subtitle(language: lang) {
+                Text(subtitle)
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
@@ -259,6 +259,13 @@ struct AIUsageWidgetEntryView: View {
                 if showBar {
                     usageBar(fraction: spend.isUnlimited ? 0 : spend.fraction, primary: false)
                 }
+            }
+            if !isSmall, let subtitle = spend.subtitle(language: lang) {
+                Text(subtitle)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             if isLarge, let noteKey = spend.noteKey {
                 Text(L10n.string(noteKey, language: lang))

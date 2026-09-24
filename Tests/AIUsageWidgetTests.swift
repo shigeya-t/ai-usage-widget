@@ -233,6 +233,10 @@ final class L10nTests: XCTestCase {
             "meter.grokBot",
             "meter.fiveHour",
             "meter.sevenDay",
+            "meter.cloudSessionCredit",
+            "spend.cloudSessionCredit",
+            "spend.cloudSessionCredit.expires",
+            "spend.remaining",
             "meter.window.weekly",
             "meter.codeReview",
             "spend.onDemand",
@@ -446,6 +450,46 @@ final class ClaudeProviderMappingTests: XCTestCase {
         XCTAssertEqual(snap.meters[0].percentUsed, 7.2, accuracy: 0.001)
         XCTAssertEqual(snap.plan.resetAt, Date(timeIntervalSince1970: 1_770_000_000))
         XCTAssertNil(snap.spend)
+    }
+
+    func testMapsCloudSessionCreditWithoutCountingItInTheMenuBar() throws {
+        let usage = try decodeFixture("claude_oauth_usage_cloud_credit")
+        let snap = ClaudeProvider.mapUsage(
+            usage,
+            accountLabel: nil,
+            subscriptionType: "pro",
+            rateLimitTier: nil,
+            fetchedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        XCTAssertEqual(snap.meters.map(\.id), ["five-hour"])
+        XCTAssertEqual(snap.spendRows.map(\.id), ["cloud-session-credit", "extra-usage"])
+        let credit = try XCTUnwrap(snap.spendRows.first)
+        XCTAssertEqual(credit.titleKey, "spend.cloudSessionCredit")
+        XCTAssertEqual(credit.subtitleKey, "spend.cloudSessionCredit.expires")
+        XCTAssertEqual(credit.usedUSD, 0, accuracy: 0.001)
+        XCTAssertEqual(credit.limitUSD ?? -1, 100, accuracy: 0.001)
+        XCTAssertEqual(credit.amountIsRemaining, true)
+        XCTAssertEqual(credit.formattedAmount(language: .ja, compact: false), "残 $100 / $100")
+        XCTAssertEqual(credit.expiresAt, Date(timeIntervalSince1970: 1_793_865_540))
+        XCTAssertEqual(credit.subtitle(language: .ja), "11月5日 16:59に期限切れ")
+        XCTAssertEqual(snap.menuBarValue(language: .en), "40%")
+        XCTAssertEqual(snap.spend?.titleKey, "spend.extraUsage")
+    }
+
+    func testHidesCloudSessionCreditWhenUtilizationIsMissing() {
+        let usage = ClaudeOAuthUsageResponse(
+            fiveHour: ClaudeUsageWindow(utilization: JSONNumber(10), resetsAt: nil),
+            cinderCove: ClaudeUsageWindow(utilization: nil, resetsAt: nil)
+        )
+        let snap = ClaudeProvider.mapUsage(
+            usage,
+            accountLabel: nil,
+            subscriptionType: "max",
+            rateLimitTier: nil,
+            fetchedAt: Date()
+        )
+        XCTAssertEqual(snap.meters.map(\.id), ["five-hour"])
     }
 
     func testDisplayPlanName() {
