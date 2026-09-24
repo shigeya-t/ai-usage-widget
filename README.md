@@ -14,7 +14,7 @@
   <img src="docs/screenshots/menu-ja.png" alt="メニューバー（日本語）" width="300" />
 </p>
 
-構成は [東京地下鉄ウィジェット](https://github.com/shigeya-t/subway-widget) と同じで、役割をはっきり分けています。
+役割は次のように分けています。
 
 | 役割 | 担当 |
 | --- | --- |

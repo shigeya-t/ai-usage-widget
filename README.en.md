@@ -14,7 +14,7 @@ the plan name, reset date, per-window meters, and pay-as-you-go spend on one pan
   <img src="docs/screenshots/menu-en.png" alt="Menu bar (English)" width="300" />
 </p>
 
-The architecture matches [Subway Widget](https://github.com/shigeya-t/subway-widget), with a strict split of roles:
+Roles are split as follows:
 
 | Role | Owner |
 | --- | --- |
