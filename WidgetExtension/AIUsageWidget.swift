@@ -140,7 +140,7 @@ struct AIUsageWidgetEntryView: View {
             ForEach(snapshot.meters) { meter in
                 meterBlock(meter)
             }
-            if let spend = snapshot.spend {
+            ForEach(snapshot.spendRows, id: \.id) { spend in
                 spendBlock(spend)
             }
             if entry.isPaused {
@@ -206,8 +206,8 @@ struct AIUsageWidgetEntryView: View {
                     .minimumScaleFactor(0.7)
                     .layoutPriority(0)
             }
-            if !isSmall, let subtitleKey = meter.subtitleKey {
-                Text(L10n.string(subtitleKey, language: lang))
+            if !isSmall, let subtitle = meter.subtitle(language: lang) {
+                Text(subtitle)
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
@@ -229,9 +229,11 @@ struct AIUsageWidgetEntryView: View {
         return VStack(alignment: .leading, spacing: isSmall ? 1 : 2) {
             if isSmall {
                 // 金額が長いのでラベル行と分け、バー横に置く
-                Text(L10n.string(spend.titleKey, language: lang))
+                Text(L10n.string(spend.compactTitleKey ?? spend.titleKey, language: lang))
                     .font(.system(size: 10, weight: .medium))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 4) {
                     if showBar {
                         usageBar(fraction: spend.isUnlimited ? 0 : spend.fraction, primary: false)
@@ -248,6 +250,7 @@ struct AIUsageWidgetEntryView: View {
                     Text(L10n.string(spend.titleKey, language: lang))
                         .font(.system(size: 12, weight: .medium))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .layoutPriority(1)
                     Spacer(minLength: 2)
                     Text(amount)
@@ -259,6 +262,13 @@ struct AIUsageWidgetEntryView: View {
                 if showBar {
                     usageBar(fraction: spend.isUnlimited ? 0 : spend.fraction, primary: false)
                 }
+            }
+            if !isSmall, let subtitle = spend.subtitle(language: lang) {
+                Text(subtitle)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             if isLarge, let noteKey = spend.noteKey {
                 Text(L10n.string(noteKey, language: lang))

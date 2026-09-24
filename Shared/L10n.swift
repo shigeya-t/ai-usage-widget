@@ -9,6 +9,47 @@ enum L10n {
         String(format: string(key, language: language), locale: locale(for: language), arguments: args)
     }
 
+    /// App Group 由来のキーは、表にあり `%@` が1つだけのときだけ書式化する。
+    /// 未知のキーや数値指定子は `String(format:)` に渡さず、そのまま表示する。
+    static func formatKnown(_ key: String, _ arg: String, language: AppLanguage = AppSettings.language) -> String {
+        let template = string(key, language: language)
+        guard table[key] != nil, isSingleStringTemplate(template) else {
+            return template
+        }
+        return String(format: template, locale: locale(for: language), arg)
+    }
+
+    /// `%%` を除き、文字列指定子 `%@`（位置指定 `%1$@` を含む）がちょうど1つ。
+    static func isSingleStringTemplate(_ template: String) -> Bool {
+        var count = 0
+        var index = template.startIndex
+        while index < template.endIndex {
+            guard template[index] == "%" else {
+                index = template.index(after: index)
+                continue
+            }
+            let next = template.index(after: index)
+            if next == template.endIndex { return false }
+            if template[next] == "%" {
+                index = template.index(after: next)
+                continue
+            }
+            var cursor = next
+            if template[cursor].isNumber {
+                while cursor < template.endIndex, template[cursor].isNumber {
+                    cursor = template.index(after: cursor)
+                }
+                guard cursor < template.endIndex, template[cursor] == "$" else { return false }
+                cursor = template.index(after: cursor)
+            }
+            guard cursor < template.endIndex, template[cursor] == "@" else { return false }
+            count += 1
+            if count > 1 { return false }
+            index = template.index(after: cursor)
+        }
+        return count == 1
+    }
+
     static func locale(for language: AppLanguage) -> Locale {
         switch language {
         case .ja: return Locale(identifier: "ja_JP")
@@ -44,6 +85,27 @@ enum L10n {
         "meter.sevenDay.subtitle": [.ja: "すべてのモデル", .en: "All models"],
         "meter.sevenDayOpus": [.ja: "週次 Opus", .en: "Weekly Opus"],
         "meter.sevenDaySonnet": [.ja: "週次 Sonnet", .en: "Weekly Sonnet"],
+        "meter.cloudSessionCredit": [.ja: "クラウドセッションクレジット", .en: "Cloud session credits"],
+        "meter.cloudSessionCredit.subtitle": [
+            .ja: "ワンタイムのセッション枠",
+            .en: "One-time session credit"
+        ],
+        "meter.cloudSessionCredit.expires": [
+            .ja: "ワンタイム · %@まで",
+            .en: "One-time · expires %@"
+        ],
+        "spend.cloudSessionCredit": [.ja: "クラウドセッションクレジット", .en: "Cloud session credits"],
+        "spend.cloudSessionCredit.compact": [.ja: "クラウドクレジット", .en: "Cloud credits"],
+        "spend.cloudSessionCredit.subtitle": [
+            .ja: "含まれるクレジット",
+            .en: "Included credits"
+        ],
+        "spend.cloudSessionCredit.expires": [
+            .ja: "%@に期限切れ",
+            .en: "Expires %@"
+        ],
+        "spend.remaining": [.ja: "残 $%.0f / $%.0f", .en: "$%.0f left / $%.0f"],
+        "spend.remaining.compact": [.ja: "残$%.0f/$%.0f", .en: "$%.0f/$%.0f left"],
         "meter.window.primary": [.ja: "メイン枠", .en: "Primary"],
         "meter.window.secondary": [.ja: "サブ枠", .en: "Secondary"],
         "meter.window.fiveHour": [.ja: "5時間枠", .en: "5-hour"],

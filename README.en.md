@@ -62,7 +62,7 @@ time. Claude and Codex use the same surface.
 | Service | Main source | What you see | Login needed |
 | --- | --- | --- | --- |
 | **Cursor** | `cursor.com` (unofficial API) | Cursor Models / Other Models / Grok Bot usage, on-demand spend | A Cursor.app login |
-| **Claude** | `api.anthropic.com` (unofficial OAuth API) | 5-hour, weekly, weekly Opus / Sonnet windows, extra usage spend | A Claude Code (CLI) login |
+| **Claude** | `api.anthropic.com` (unofficial OAuth API) | 5-hour, weekly, weekly Opus / Sonnet windows, cloud session credits, extra usage spend | A Claude Code (CLI) login |
 | **Claude (API key only)** | Official Cost API | This month's API spend | An Admin key such as `sk-ant-admin01-` |
 | **Codex** | `chatgpt.com` (unofficial API) | Primary / secondary / code review windows, extra credit balance | A Codex CLI login (ChatGPT account) |
 | **Codex (API key only)** | Official Cost API | This month's API spend | An OpenAI Admin key |
@@ -170,6 +170,7 @@ Every size has two buttons in the top-right corner:
 | On-Demand | Cursor | Usage past your limit, billed later (spent / limit, or "Unlimited") |
 | 5-hour | Claude | The short, session-length window |
 | Weekly / Weekly Opus / Weekly Sonnet | Claude | Seven-day windows, split per model when the API reports them separately |
+| Cloud session credits | Claude | A one-time credit for cloud sessions. Shows the remaining amount and expiry, and is not part of the plan-window percent |
 | Extra usage | Claude | Pay-as-you-go beyond the plan window. Says so when the credit balance is empty |
 | Primary / Secondary | Codex | Named from the reset period the API reports: 5-hour, Daily, Weekly, or Monthly |
 | Code Review | Codex | The code review allowance |

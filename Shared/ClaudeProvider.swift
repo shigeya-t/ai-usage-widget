@@ -149,8 +149,15 @@ struct ClaudeProvider: UsageProvider {
         if let window = usage.sevenDaySonnet {
             meters.append(meter(id: "seven-day-sonnet", titleKey: "meter.sevenDaySonnet", subtitleKey: nil, window: window, accent: .secondary))
         }
+        var spends: [SpendMeter] = []
+        if let credit = mapCloudSessionCredit(usage) {
+            spends.append(credit)
+        } else if let credit = cloudSessionCreditMeter(usage.cinderCove) {
+            meters.append(credit)
+        }
 
         let spend = mapExtraUsageSpend(usage)
+        if let spend { spends.append(spend) }
 
         let resetAt = usage.fiveHour?.resetsAt?.date ?? usage.sevenDay?.resetsAt?.date
         return UsageSnapshot(
@@ -163,6 +170,7 @@ struct ClaudeProvider: UsageProvider {
             ),
             meters: meters,
             spend: spend,
+            spends: spends.isEmpty ? nil : spends,
             fetchedAt: fetchedAt,
             errorMessage: nil
         )
@@ -181,6 +189,47 @@ struct ClaudeProvider: UsageProvider {
             subtitleKey: subtitleKey,
             percentUsed: window.utilization?.value ?? 0,
             accent: accent
+        )
+    }
+
+    /// 設定の「クラウドセッションクレジット」。現行は `iguana_necktie` のドル残高。
+    /// 金額が無い古い `cinder_cove` だけなら使用率メーターに落とす。
+    static func mapCloudSessionCredit(_ usage: ClaudeOAuthUsageResponse) -> SpendMeter? {
+        let window = usage.iguanaNecktie ?? usage.cinderCove
+        guard let window, let limit = window.limitDollars?.value, limit > 0 else { return nil }
+        let used = window.usedDollars?.value
+            ?? max(limit - (window.remainingDollars?.value ?? limit), 0)
+        let expiresAt = window.resetsAt?.date
+        return SpendMeter(
+            id: "cloud-session-credit",
+            titleKey: "spend.cloudSessionCredit",
+            noteKey: nil,
+            usedUSD: used,
+            limitUSD: limit,
+            isUnlimited: false,
+            amountIsRemaining: true,
+            subtitleKey: expiresAt == nil
+                ? "spend.cloudSessionCredit.subtitle"
+                : "spend.cloudSessionCredit.expires",
+            expiresAt: expiresAt,
+            compactTitleKey: "spend.cloudSessionCredit.compact"
+        )
+    }
+
+    /// 金額の無い `cinder_cove`。使用率が無いときは出さない。
+    static func cloudSessionCreditMeter(_ window: ClaudeUsageWindow?) -> UsageMeter? {
+        guard let window, let used = window.utilization?.value else { return nil }
+        let expiresAt = window.resetsAt?.date
+        return UsageMeter(
+            id: "cloud-session-credit",
+            titleKey: "meter.cloudSessionCredit",
+            subtitleKey: expiresAt == nil
+                ? "meter.cloudSessionCredit.subtitle"
+                : "meter.cloudSessionCredit.expires",
+            percentUsed: used,
+            accent: .secondary,
+            omitFromMenuBar: true,
+            expiresAt: expiresAt
         )
     }
 
@@ -321,6 +370,8 @@ struct ClaudeOAuthUsageResponse: Codable, Equatable {
     var sevenDay: ClaudeUsageWindow?
     var sevenDayOpus: ClaudeUsageWindow?
     var sevenDaySonnet: ClaudeUsageWindow?
+    var cinderCove: ClaudeUsageWindow?
+    var iguanaNecktie: ClaudeUsageWindow?
     var extraUsage: ClaudeExtraUsage?
     var spend: ClaudeOAuthSpend?
 
@@ -329,6 +380,8 @@ struct ClaudeOAuthUsageResponse: Codable, Equatable {
         case sevenDay = "seven_day"
         case sevenDayOpus = "seven_day_opus"
         case sevenDaySonnet = "seven_day_sonnet"
+        case cinderCove = "cinder_cove"
+        case iguanaNecktie = "iguana_necktie"
         case extraUsage = "extra_usage"
         case spend
     }
@@ -363,10 +416,16 @@ struct ClaudeMoneyAmount: Codable, Equatable {
 struct ClaudeUsageWindow: Codable, Equatable {
     var utilization: JSONNumber?
     var resetsAt: JSONTimestamp?
+    var limitDollars: JSONNumber?
+    var usedDollars: JSONNumber?
+    var remainingDollars: JSONNumber?
 
     enum CodingKeys: String, CodingKey {
         case utilization
         case resetsAt = "resets_at"
+        case limitDollars = "limit_dollars"
+        case usedDollars = "used_dollars"
+        case remainingDollars = "remaining_dollars"
     }
 }
 

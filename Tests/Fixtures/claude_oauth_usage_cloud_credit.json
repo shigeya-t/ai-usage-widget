@@ -1,0 +1,20 @@
+{
+  "five_hour": {
+    "utilization": 40,
+    "resets_at": "2026-09-24T12:00:00Z"
+  },
+  "cinder_cove": null,
+  "iguana_necktie": {
+    "utilization": 0,
+    "resets_at": "2026-11-05T07:59:00+00:00",
+    "limit_dollars": 100,
+    "used_dollars": 0,
+    "remaining_dollars": 100
+  },
+  "extra_usage": {
+    "is_enabled": true,
+    "monthly_limit": 10000,
+    "used_credits": 4150,
+    "decimal_places": 2
+  }
+}

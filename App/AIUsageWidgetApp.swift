@@ -446,8 +446,12 @@ struct MenuContent: View {
                 }
             }
 
-            if let spend = snapshot.spend {
-                SpendRow(spend: spend, language: lang)
+            if !snapshot.spendRows.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(snapshot.spendRows, id: \.id) { spend in
+                        SpendRow(spend: spend, language: lang)
+                    }
+                }
             }
 
             Text(L10n.format(
@@ -620,8 +624,8 @@ struct MeterRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(L10n.string(meter.titleKey, language: language))
                         .font(compact ? .caption.weight(.medium) : .callout.weight(.medium))
-                    if !compact, let subtitleKey = meter.subtitleKey {
-                        Text(L10n.string(subtitleKey, language: language))
+                    if !compact, let subtitle = meter.subtitle(language: language) {
+                        Text(subtitle)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -651,6 +655,11 @@ struct SpendRow: View {
                 Text(amountText)
                     .font(.caption)
                     .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            if let subtitle = spend.subtitle(language: language) {
+                Text(subtitle)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             if spend.remainingUSD == nil {
