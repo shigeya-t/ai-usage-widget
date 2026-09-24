@@ -71,7 +71,7 @@ struct UsageMeter: Codable, Equatable, Identifiable {
             return L10n.string(subtitleKey, language: language)
         }
         let dateText = UsageFormatting.monthDay(expiresAt, language: language)
-        return L10n.format(subtitleKey, dateText, language: language)
+        return L10n.formatKnown(subtitleKey, dateText, language: language)
     }
 
     enum MeterAccent: String, Codable {
@@ -121,7 +121,7 @@ struct SpendMeter: Codable, Equatable {
         guard let expiresAt else {
             return L10n.string(subtitleKey, language: language)
         }
-        return L10n.format(subtitleKey, UsageFormatting.expiryDate(expiresAt, language: language), language: language)
+        return L10n.formatKnown(subtitleKey, UsageFormatting.expiryDate(expiresAt, language: language), language: language)
     }
 
     func formattedAmount(language: AppLanguage, compact: Bool) -> String {

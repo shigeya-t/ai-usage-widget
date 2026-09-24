@@ -473,10 +473,55 @@ final class ClaudeProviderMappingTests: XCTestCase {
         XCTAssertEqual(credit.limitUSD ?? -1, 100, accuracy: 0.001)
         XCTAssertEqual(credit.amountIsRemaining, true)
         XCTAssertEqual(credit.formattedAmount(language: .ja, compact: false), "残 $100 / $100")
-        XCTAssertEqual(credit.expiresAt, Date(timeIntervalSince1970: 1_793_865_540))
-        XCTAssertEqual(credit.subtitle(language: .ja), "11月5日 16:59に期限切れ")
+        let expiresAt = Date(timeIntervalSince1970: 1_793_865_540)
+        XCTAssertEqual(credit.expiresAt, expiresAt)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.timeZone = .current
+        formatter.dateFormat = "M月d日 H:mm"
+        XCTAssertEqual(credit.subtitle(language: .ja), "\(formatter.string(from: expiresAt))に期限切れ")
         XCTAssertEqual(snap.menuBarValue(language: .en), "40%")
         XCTAssertEqual(snap.spend?.titleKey, "spend.extraUsage")
+    }
+
+    func testUntrustedSubtitleKeyIsNotUsedAsFormat() {
+        let expires = Date(timeIntervalSince1970: 1_793_865_540)
+        let unknown = SpendMeter(
+            id: "x",
+            titleKey: "spend.cloudSessionCredit",
+            usedUSD: 0,
+            limitUSD: nil,
+            isUnlimited: false,
+            subtitleKey: "%@%@",
+            expiresAt: expires
+        )
+        XCTAssertEqual(unknown.subtitle(language: .ja), "%@%@")
+
+        let numeric = UsageMeter(
+            id: "m",
+            titleKey: "meter.cloudSessionCredit",
+            subtitleKey: "spend.amount",
+            percentUsed: 0,
+            accent: .secondary,
+            expiresAt: expires
+        )
+        XCTAssertEqual(numeric.subtitle(language: .ja), L10n.string("spend.amount", language: .ja))
+
+        let known = UsageMeter(
+            id: "c",
+            titleKey: "meter.cloudSessionCredit",
+            subtitleKey: "meter.cloudSessionCredit.expires",
+            percentUsed: 0,
+            accent: .primary,
+            expiresAt: expires
+        )
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.timeZone = .current
+        formatter.dateFormat = "M月d日"
+        XCTAssertEqual(known.subtitle(language: .ja), "ワンタイム · \(formatter.string(from: expires))まで")
+        XCTAssertFalse(L10n.isSingleStringTemplate("残 $%.0f / $%.0f"))
+        XCTAssertTrue(L10n.isSingleStringTemplate("%1$@に期限切れ"))
     }
 
     func testHidesCloudSessionCreditWhenUtilizationIsMissing() {

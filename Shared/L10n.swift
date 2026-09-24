@@ -9,6 +9,47 @@ enum L10n {
         String(format: string(key, language: language), locale: locale(for: language), arguments: args)
     }
 
+    /// App Group 由来のキーは、表にあり `%@` が1つだけのときだけ書式化する。
+    /// 未知のキーや数値指定子は `String(format:)` に渡さず、そのまま表示する。
+    static func formatKnown(_ key: String, _ arg: String, language: AppLanguage = AppSettings.language) -> String {
+        let template = string(key, language: language)
+        guard table[key] != nil, isSingleStringTemplate(template) else {
+            return template
+        }
+        return String(format: template, locale: locale(for: language), arg)
+    }
+
+    /// `%%` を除き、文字列指定子 `%@`（位置指定 `%1$@` を含む）がちょうど1つ。
+    static func isSingleStringTemplate(_ template: String) -> Bool {
+        var count = 0
+        var index = template.startIndex
+        while index < template.endIndex {
+            guard template[index] == "%" else {
+                index = template.index(after: index)
+                continue
+            }
+            let next = template.index(after: index)
+            if next == template.endIndex { return false }
+            if template[next] == "%" {
+                index = template.index(after: next)
+                continue
+            }
+            var cursor = next
+            if template[cursor].isNumber {
+                while cursor < template.endIndex, template[cursor].isNumber {
+                    cursor = template.index(after: cursor)
+                }
+                guard cursor < template.endIndex, template[cursor] == "$" else { return false }
+                cursor = template.index(after: cursor)
+            }
+            guard cursor < template.endIndex, template[cursor] == "@" else { return false }
+            count += 1
+            if count > 1 { return false }
+            index = template.index(after: cursor)
+        }
+        return count == 1
+    }
+
     static func locale(for language: AppLanguage) -> Locale {
         switch language {
         case .ja: return Locale(identifier: "ja_JP")
