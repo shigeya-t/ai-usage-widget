@@ -54,6 +54,7 @@ enum L10n {
             .en: "One-time · expires %@"
         ],
         "spend.cloudSessionCredit": [.ja: "クラウドセッションクレジット", .en: "Cloud session credits"],
+        "spend.cloudSessionCredit.compact": [.ja: "クラウドクレジット", .en: "Cloud credits"],
         "spend.cloudSessionCredit.subtitle": [
             .ja: "含まれるクレジット",
             .en: "Included credits"

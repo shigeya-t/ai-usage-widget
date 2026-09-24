@@ -106,6 +106,8 @@ struct SpendMeter: Codable, Equatable {
     var amountIsRemaining: Bool? = nil
     var subtitleKey: String? = nil
     var expiresAt: Date? = nil
+    /// 小ウィジェット用の短い見出し。旧スナップショットには無い。
+    var compactTitleKey: String? = nil
 
     var displayUnit: SpendUnit { unit ?? .usd }
 

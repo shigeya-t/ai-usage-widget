@@ -229,9 +229,11 @@ struct AIUsageWidgetEntryView: View {
         return VStack(alignment: .leading, spacing: isSmall ? 1 : 2) {
             if isSmall {
                 // 金額が長いのでラベル行と分け、バー横に置く
-                Text(L10n.string(spend.titleKey, language: lang))
+                Text(L10n.string(spend.compactTitleKey ?? spend.titleKey, language: lang))
                     .font(.system(size: 10, weight: .medium))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 4) {
                     if showBar {
                         usageBar(fraction: spend.isUnlimited ? 0 : spend.fraction, primary: false)
@@ -248,6 +250,7 @@ struct AIUsageWidgetEntryView: View {
                     Text(L10n.string(spend.titleKey, language: lang))
                         .font(.system(size: 12, weight: .medium))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .layoutPriority(1)
                     Spacer(minLength: 2)
                     Text(amount)

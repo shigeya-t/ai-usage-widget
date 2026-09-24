@@ -211,7 +211,8 @@ struct ClaudeProvider: UsageProvider {
             subtitleKey: expiresAt == nil
                 ? "spend.cloudSessionCredit.subtitle"
                 : "spend.cloudSessionCredit.expires",
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            compactTitleKey: "spend.cloudSessionCredit.compact"
         )
     }
 

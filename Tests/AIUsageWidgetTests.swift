@@ -235,6 +235,7 @@ final class L10nTests: XCTestCase {
             "meter.sevenDay",
             "meter.cloudSessionCredit",
             "spend.cloudSessionCredit",
+            "spend.cloudSessionCredit.compact",
             "spend.cloudSessionCredit.expires",
             "spend.remaining",
             "meter.window.weekly",
@@ -466,6 +467,7 @@ final class ClaudeProviderMappingTests: XCTestCase {
         XCTAssertEqual(snap.spendRows.map(\.id), ["cloud-session-credit", "extra-usage"])
         let credit = try XCTUnwrap(snap.spendRows.first)
         XCTAssertEqual(credit.titleKey, "spend.cloudSessionCredit")
+        XCTAssertEqual(credit.compactTitleKey, "spend.cloudSessionCredit.compact")
         XCTAssertEqual(credit.subtitleKey, "spend.cloudSessionCredit.expires")
         XCTAssertEqual(credit.usedUSD, 0, accuracy: 0.001)
         XCTAssertEqual(credit.limitUSD ?? -1, 100, accuracy: 0.001)
