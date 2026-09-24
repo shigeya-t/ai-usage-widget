@@ -69,7 +69,7 @@ Keychain も本番経路では触らない（Cookie 正規化と JSON マッピ�
 ウィジェット拡張の `Provider.buildEntry()` から通信してはいけない。スナップショットは
 App が App Group に書いたものを読むだけ。
 
-## 開発中に踏まないこと（subway-widget と同じ）
+## 開発中に踏まないこと
 
 - `.app` 名に濁点付き日本語を入れない（拡張が起動せず空枠になる）
 - アプリ終了は bundle ID（`tell application id "jp.shigeya.AIUsageWidget"`）
