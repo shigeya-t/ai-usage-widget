@@ -39,6 +39,17 @@ rm -rf "$TARGET"
 cp -R "$APP" "$DEST/"
 
 echo "==> Launch Services / アイコンキャッシュを更新"
+# 消えたアーカイブ中間生成物やゴミ箱の同名アプリが残っていると、
+# Notification Center が拡張を引けずプレースホルダのままになる。
+shopt -s nullglob
+for stale in \
+  "$HOME/.Trash/Cursor使用量.app" \
+  "$HOME/.Trash/$APP_NAME" \
+  "$HOME"/Library/Developer/Xcode/DerivedData/AIUsageWidget-*/Build/Intermediates.noindex/ArchiveIntermediates/AIUsageWidget/InstallationBuildProductsLocation/Applications/"$APP_NAME"
+do
+  "$LSREGISTER" -u "$stale" 2>/dev/null || true
+done
+shopt -u nullglob
 while IFS= read -r path; do
   [[ -z "$path" || "$path" == "$TARGET" ]] && continue
   "$LSREGISTER" -u "$path" 2>/dev/null || true
