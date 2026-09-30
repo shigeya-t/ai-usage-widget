@@ -1231,6 +1231,66 @@ final class CursorTempCopyTests: XCTestCase {
     }
 }
 
+final class WidgetConfigurationAdoptionTests: XCTestCase {
+    func testNilQueryKeepsSavedProviders() {
+        let decision = WidgetConfigurationAdoption.decide(
+            configured: nil,
+            saved: ["cursor", "claude"],
+            emptyStreak: 1
+        )
+        XCTAssertEqual(decision.providers, ["cursor", "claude"])
+        XCTAssertFalse(decision.replaceSaved)
+        XCTAssertEqual(decision.emptyStreak, 1)
+    }
+
+    func testNonEmptyReplacesSavedAndResetsStreak() {
+        let decision = WidgetConfigurationAdoption.decide(
+            configured: ["claude", "claude", "codex"],
+            saved: ["cursor"],
+            emptyStreak: 2
+        )
+        XCTAssertEqual(decision.providers, ["claude", "codex"])
+        XCTAssertTrue(decision.replaceSaved)
+        XCTAssertEqual(decision.emptyStreak, 0)
+    }
+
+    func testEmptyRightAfterLaunchDoesNotClearSaved() {
+        var streak = 0
+        for _ in 0..<(WidgetConfigurationAdoption.emptyConfirmations - 1) {
+            let decision = WidgetConfigurationAdoption.decide(
+                configured: [],
+                saved: ["cursor"],
+                emptyStreak: streak
+            )
+            XCTAssertEqual(decision.providers, ["cursor"])
+            XCTAssertFalse(decision.replaceSaved)
+            streak = decision.emptyStreak
+        }
+        XCTAssertEqual(streak, WidgetConfigurationAdoption.emptyConfirmations - 1)
+    }
+
+    func testRepeatedEmptyMeansNoWidgets() {
+        let decision = WidgetConfigurationAdoption.decide(
+            configured: [],
+            saved: ["cursor"],
+            emptyStreak: WidgetConfigurationAdoption.emptyConfirmations - 1
+        )
+        XCTAssertEqual(decision.providers, [])
+        XCTAssertTrue(decision.replaceSaved)
+    }
+
+    func testEmptyWithNothingSavedIsAcceptedImmediately() {
+        let decision = WidgetConfigurationAdoption.decide(
+            configured: [],
+            saved: [],
+            emptyStreak: 0
+        )
+        XCTAssertEqual(decision.providers, [])
+        XCTAssertTrue(decision.replaceSaved)
+        XCTAssertEqual(decision.emptyStreak, 1)
+    }
+}
+
 final class KeychainRetryThrottleTests: XCTestCase {
     func testFirstRetryIsAllowed() {
         XCTAssertTrue(ClaudeSession.keychainRetryAllowed(lastRetryAt: nil, now: Date()))

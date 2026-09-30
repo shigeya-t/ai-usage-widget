@@ -55,6 +55,8 @@ final class UsageModel: ObservableObject {
     private var timer: Timer?
     private var refreshTask: Task<Void, Never>?
     private var refreshAgain = false
+    private var emptyConfigurationStreak = 0
+    private var widgetPokes: [DispatchWorkItem] = []
 
     init() {
         selectedProviderID = AppSettings.selectedProviderID
@@ -68,10 +70,42 @@ final class UsageModel: ObservableObject {
         observePauseChangesFromWidget()
         observeManualRefreshRequestsFromWidget()
         observeOpenDashboardRequestsFromWidget()
+        observeSystemWake()
         openPendingDashboard()
+        // ログイン項目は chronod がデスクトップウィジェットを戻すより先に起動する。
+        // その時点の reloadTimelines は捨てられ、ウィジェットはプレースホルダのまま残る。
+        scheduleWidgetPokes()
         if !isPaused {
             startTimer()
             Task { await refresh() }
+        }
+    }
+
+    /// 復元が終わるまで、少し間を空けてタイムラインを要求し直す。
+    private func scheduleWidgetPokes() {
+        widgetPokes.forEach { $0.cancel() }
+        widgetPokes = [3.0, 10.0, 30.0].map { delay in
+            let work = DispatchWorkItem {
+                WidgetReloader.reload()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            return work
+        }
+    }
+
+    private func observeSystemWake() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.scheduleWidgetPokes()
+                if !self.isPaused {
+                    await self.refresh()
+                }
+            }
         }
     }
 
@@ -238,12 +272,16 @@ final class UsageModel: ObservableObject {
             if seen.insert(id).inserted { ids.append(id) }
         }
         append(selectedProviderID)
-        if let configured = await widgetConfiguredProviderIDs() {
-            AppSettings.setNeededProviders(configured)
-            for id in configured { append(id) }
-        } else {
-            for id in AppSettings.neededProviders { append(id) }
+        let decision = WidgetConfigurationAdoption.decide(
+            configured: await widgetConfiguredProviderIDs(),
+            saved: AppSettings.neededProviders,
+            emptyStreak: emptyConfigurationStreak
+        )
+        emptyConfigurationStreak = decision.emptyStreak
+        if decision.replaceSaved {
+            AppSettings.setNeededProviders(decision.providers)
         }
+        for id in decision.providers { append(id) }
         return ids
     }
 
@@ -389,6 +427,8 @@ struct MenuContent: View {
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             NSApp.activate(ignoringOtherApps: true)
+            // メニューを開いた時点ではスナップショットがある。プレースホルダへ押し出す。
+            WidgetReloader.reload()
         }
     }
 
