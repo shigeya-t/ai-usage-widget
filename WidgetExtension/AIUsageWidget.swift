@@ -84,9 +84,7 @@ struct AIUsageWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: SelectProviderIntent.self, provider: Provider()) { entry in
             AIUsageWidgetEntryView(entry: entry)
-                .containerBackground(for: .widget) {
-                    Color(nsColor: .windowBackgroundColor)
-                }
+                .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("AI使用量")
         .description("Cursor / Claude / Codex のプランと使用量を表示します")
