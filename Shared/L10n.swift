@@ -266,8 +266,8 @@ enum L10n {
             .en: "The Cursor session expired. Open Cursor.app once, then press Refresh."
         ],
         "error.tokenExpired.claude": [
-            .ja: "Claude Code のトークンが期限切れです。ターミナルで claude を一度起動してから「更新」を押してください（このアプリはトークンを更新しません）。",
-            .en: "The Claude Code token expired. Run claude in the terminal once, then press Refresh (this app does not refresh tokens)."
+            .ja: "Claude Code のトークンが期限切れです。ターミナルで claude -p \"hi\" を実行してから「更新」を押してください。Claude デスクトップアプリを使うだけではこのトークンは更新されず、このアプリも更新しません。",
+            .en: "The Claude Code token expired. Run claude -p \"hi\" in the terminal, then press Refresh. Using the Claude desktop app alone does not renew this token, and this app does not either."
         ],
         "error.tokenExpired.chatgpt": [
             .ja: "Codex のトークンが期限切れです。Codex を一度起動してから「更新」を押してください（このアプリはトークンを更新しません）。",

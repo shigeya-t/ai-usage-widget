@@ -224,7 +224,7 @@ DEVELOPMENT_TEAM=XXXXXXXXXX ./scripts/deploy-local.sh
 
 - Claude.app（デスクトップ）のログインは使えません。**ターミナルの Claude Code にログインしている**と 5時間枠・週次枠が取れます。
 - API キーしか無い場合は、公式の `GET https://api.anthropic.com/v1/organizations/cost_report`（Admin キーが必要）で今月の API 費用を出します。個人アカウントでは Admin API を使えないことがあります。
-- 期限切れのときは、ターミナルで `claude` を一度起動してから「今すぐ更新」を押してください。
+- 期限切れのときは、ターミナルで `claude -p "hi"` を実行してから「今すぐ更新」を押してください。読むのは CLI のトークンなので、Claude デスクトップアプリ（Code タブ）を使うだけでは更新されません。
 
 ### Codex
 
