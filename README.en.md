@@ -224,7 +224,7 @@ Credentials are resolved in this order:
 
 - A Claude.app (desktop) login cannot be used. The 5-hour and weekly windows come from **a Claude Code login in the terminal**.
 - With only an API key, the official `GET https://api.anthropic.com/v1/organizations/cost_report` (Admin key required) reports this month's API spend. The Admin API is unavailable for many individual accounts.
-- If the token expired, run `claude` in the terminal once, then press **Refresh Now**.
+- If the token expired, run `claude -p "hi"` in the terminal, then press **Refresh Now**. This app reads the CLI token, which using the Claude desktop app (Code tab) alone does not renew.
 
 ### Codex
 
