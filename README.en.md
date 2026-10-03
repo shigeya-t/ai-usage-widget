@@ -271,7 +271,7 @@ Quit the host and refreshing stops; widgets keep showing the last snapshot.
 | "Could not read a … session" | You are not signed in to the original app, or it could not be read | Sign in to the original app, or paste a value into the authentication field |
 | "The … token expired" | The local access token expired | Open the original app (Cursor.app / `claude` / Codex) once, then press **Refresh Now** |
 | A keychain dialog appears, or you denied it | Reading the Claude Code keychain item needs your approval | Choose **Always Allow**. If you denied it, **Refresh Now** asks again |
-| "The usage API is rate-limited" | Rate limiting | Wait a while, then refresh |
+| "The usage API is rate-limited" | Rate limiting | Automatic refresh waits for `Retry-After` (or 10 min, doubling up to 60 min). The menu's refresh button retries immediately |
 | Values are frozen | Paused, or the host quit | If the menu bar reads "Paused", resume. Otherwise launch the app |
 | Claude shows only an amount, no plan windows | API-key-only mode | Sign in with `claude` in the terminal to get plan windows |
 

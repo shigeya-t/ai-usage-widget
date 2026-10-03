@@ -1310,3 +1310,68 @@ final class KeychainRetryThrottleTests: XCTestCase {
         )
     }
 }
+
+final class RateLimitBackoffTests: XCTestCase {
+    func testRetryAfterSecondsAndZero() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertEqual(RateLimitBackoff.retryAfter(header: "120", now: now), 120)
+        XCTAssertNil(RateLimitBackoff.retryAfter(header: "0", now: now))
+        XCTAssertNil(RateLimitBackoff.retryAfter(header: nil, now: now))
+        XCTAssertNil(RateLimitBackoff.retryAfter(header: "soon", now: now))
+    }
+
+    func testRetryAfterHTTPDate() throws {
+        let now = Date(timeIntervalSince1970: 1_445_412_480) // Wed, 21 Oct 2015 07:28:00 GMT
+        let seconds = try XCTUnwrap(RateLimitBackoff.retryAfter(header: "Wed, 21 Oct 2015 07:38:00 GMT", now: now))
+        XCTAssertEqual(seconds, 600, accuracy: 1)
+    }
+
+    func testDelayDoublesWithoutRetryAfterAndCaps() {
+        XCTAssertEqual(RateLimitBackoff.delay(retryAfter: nil, strikes: 1), 10 * 60)
+        XCTAssertEqual(RateLimitBackoff.delay(retryAfter: nil, strikes: 2), 20 * 60)
+        XCTAssertEqual(RateLimitBackoff.delay(retryAfter: nil, strikes: 3), 40 * 60)
+        XCTAssertEqual(RateLimitBackoff.delay(retryAfter: nil, strikes: 9), 60 * 60)
+    }
+
+    func testDelayHonorsRetryAfterWithinBounds() {
+        XCTAssertEqual(RateLimitBackoff.delay(retryAfter: 5, strikes: 1), 60)
+        XCTAssertEqual(RateLimitBackoff.delay(retryAfter: 300, strikes: 4), 300)
+        XCTAssertEqual(RateLimitBackoff.delay(retryAfter: 86_400, strikes: 1), 60 * 60)
+    }
+
+    func testCooldownIsPerProviderAndClearsOnSuccess() {
+        let now = Date(timeIntervalSince1970: 0)
+        var backoff = RateLimitBackoff()
+        backoff.recordRateLimited("claude", retryAfter: nil, now: now)
+        XCTAssertTrue(backoff.isCoolingDown("claude", now: now.addingTimeInterval(9 * 60)))
+        XCTAssertFalse(backoff.isCoolingDown("claude", now: now.addingTimeInterval(10 * 60)))
+        XCTAssertFalse(backoff.isCoolingDown("cursor", now: now))
+
+        backoff.recordRateLimited("claude", retryAfter: nil, now: now)
+        XCTAssertTrue(backoff.isCoolingDown("claude", now: now.addingTimeInterval(19 * 60)))
+
+        backoff.recordSuccess("claude")
+        XCTAssertFalse(backoff.isCoolingDown("claude", now: now))
+    }
+
+    func testProfileCacheKeyDoesNotContainToken() {
+        let key = ClaudeProvider.profileCacheKey("sk-ant-oat01-secret")
+        XCTAssertFalse(key.contains("secret"))
+        XCTAssertEqual(key.count, 64)
+        XCTAssertEqual(key, ClaudeProvider.profileCacheKey("sk-ant-oat01-secret"))
+    }
+}
+
+final class WidgetRefreshThrottleTests: XCTestCase {
+    func testDropsAutomaticRequestsRightAfterARefresh() {
+        let start = Date(timeIntervalSince1970: 0)
+        XCTAssertTrue(WidgetRefreshThrottle.shouldRefresh(lastStartedAt: nil, now: start, userRequested: false))
+        XCTAssertFalse(WidgetRefreshThrottle.shouldRefresh(lastStartedAt: start, now: start.addingTimeInterval(1), userRequested: false))
+        XCTAssertTrue(WidgetRefreshThrottle.shouldRefresh(lastStartedAt: start, now: start.addingTimeInterval(60), userRequested: false))
+    }
+
+    func testRefreshButtonIsNotThrottled() {
+        let start = Date(timeIntervalSince1970: 0)
+        XCTAssertTrue(WidgetRefreshThrottle.shouldRefresh(lastStartedAt: start, now: start.addingTimeInterval(1), userRequested: true))
+    }
+}

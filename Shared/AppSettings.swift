@@ -133,6 +133,11 @@ enum AppSettings {
         defaults.synchronize()
     }
 
+    /// 更新ボタンからの要求かどうかを、消費せずに見る。
+    static var isKeychainRetryRequested: Bool {
+        defaults.bool(forKey: Keys.retryKeychain)
+    }
+
     static func consumeKeychainRetry() -> Bool {
         guard defaults.bool(forKey: Keys.retryKeychain) else { return false }
         defaults.set(false, forKey: Keys.retryKeychain)

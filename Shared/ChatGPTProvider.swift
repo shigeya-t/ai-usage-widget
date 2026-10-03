@@ -73,7 +73,7 @@ struct ChatGPTProvider: UsageProvider {
             throw UsageAPIError.unauthorized
         }
         if http.statusCode == 429 {
-            throw UsageAPIError.rateLimited
+            throw UsageAPIError.rateLimited(http)
         }
         guard (200..<300).contains(http.statusCode) else {
             throw UsageAPIError.httpStatus(http.statusCode)
@@ -115,7 +115,7 @@ struct ChatGPTProvider: UsageProvider {
             throw UsageAPIError.unauthorized
         }
         if http.statusCode == 429 {
-            throw UsageAPIError.rateLimited
+            throw UsageAPIError.rateLimited(http)
         }
         guard (200..<300).contains(http.statusCode) else {
             throw UsageAPIError.httpStatus(http.statusCode)

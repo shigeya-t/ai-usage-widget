@@ -27,13 +27,13 @@ struct CursorProvider: UsageProvider {
 
     func fetchSnapshot() async throws -> UsageSnapshot {
         let cookie = try CursorSession.resolveCookieValue()
+        // 補助の 2 本は失敗しても使用量は出せる。直列に待たない。
+        async let me = try? Self.fetchAuthMe(cookie: cookie)
+        async let grok = try? Self.fetchGrokMeter(cookie: cookie)
         let summary = try await Self.fetchUsageSummary(cookie: cookie)
-        var account: String?
-        if let me = try? await Self.fetchAuthMe(cookie: cookie) {
-            account = me.email ?? me.name
-        }
+        let account = await me.flatMap { $0.email ?? $0.name }
         var snap = Self.mapSummary(summary, accountLabel: account, fetchedAt: Date())
-        if let grok = try? await Self.fetchGrokMeter(cookie: cookie) {
+        if let grok = await grok.flatMap({ $0 }) {
             snap.meters.append(grok)
         }
         return snap
@@ -61,7 +61,7 @@ struct CursorProvider: UsageProvider {
             throw CursorAPIError.unauthorized
         }
         if http.statusCode == 429 {
-            throw CursorAPIError.rateLimited
+            throw CursorAPIError.rateLimited(http)
         }
         guard (200..<300).contains(http.statusCode) else {
             throw CursorAPIError.httpStatus(http.statusCode)
