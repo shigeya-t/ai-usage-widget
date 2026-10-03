@@ -75,6 +75,10 @@ App が App Group に書いたものを読むだけ。
 - アプリ終了は bundle ID（`tell application id "jp.shigeya.AIUsageWidget"`）
 - `MenuBarExtra(.window)` は `NSApp.activate` しないと TextField が入力を受け取れない
 - Cookie / JWT をログに出さない
+- 429 は `UsageAPIError.rateLimited(retryAfter:)` で投げる。`UsageModel` が `RateLimitBackoff` で
+  そのプロバイダの自動更新を空ける（Claude の `/api/oauth/usage` は詰めて叩くと 429 が抜けなくなる）。
+  待ちを無視するのはメニューの更新ボタンだけ（ウィジェットや外部からの更新要求は待つ）
+- Claude のプロフィール（メール）はトークンが変わるまで覚えておく。usage と同じホストへの呼び出しを増やさない
 - 通信は `UsageHTTP.session`（ephemeral / Cookie ストアもキャッシュも持たない）を使う。
   `URLSession.shared` は応答の `Set-Cookie` をディスクへ永続化するので使わない
 - App Group から読んだ値を検証せずに使わない。同一ユーザーの任意プロセスが書ける。

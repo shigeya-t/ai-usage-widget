@@ -42,3 +42,19 @@ enum WidgetConfigurationAdoption {
         return ids.filter { seen.insert($0).inserted }
     }
 }
+
+/// ウィジェットの自動更新要求を間引く。
+///
+/// 取得に失敗するとスナップショットが古いまま残り、ホストの `WidgetReloader.reload()` →
+/// ウィジェットの timeline → 「古いので更新して」→ ホストの取得、が約 1 秒おきに回り続ける。
+/// 失敗していないプロバイダまで毎秒取りに行くので、直前の取得から間が無い要求は捨てる。
+/// 更新ボタン（Keychain のやり直しを要求する）からの要求は通す。
+enum WidgetRefreshThrottle {
+    static let minimumInterval: TimeInterval = 60
+
+    static func shouldRefresh(lastStartedAt: Date?, now: Date, userRequested: Bool) -> Bool {
+        if userRequested { return true }
+        guard let lastStartedAt else { return true }
+        return now.timeIntervalSince(lastStartedAt) >= minimumInterval
+    }
+}

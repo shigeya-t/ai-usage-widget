@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct ClaudeProvider: UsageProvider {
     static let id = "claude"
@@ -21,10 +22,7 @@ struct ClaudeProvider: UsageProvider {
             return try await Self.fetchOfficialSnapshot(apiKey: apiKey)
         case .oauth(let creds):
             let usage = try await Self.fetchUsage(accessToken: creds.accessToken)
-            var account = creds.email
-            if account == nil, let profile = try? await Self.fetchProfile(accessToken: creds.accessToken) {
-                account = profile.email
-            }
+            let account = await Self.accountEmail(creds)
             return Self.mapUsage(
                 usage,
                 accountLabel: account,
@@ -44,6 +42,21 @@ struct ClaudeProvider: UsageProvider {
             url: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
             accessToken: accessToken
         )
+    }
+
+    /// Claude Code の Keychain の blob にはメールが無い。プロフィールは usage と同じホストで、
+    /// 毎回取ると 429 に近づくので、トークンが変わるまで覚えておく（トークン自体は持たない）。
+    private static func accountEmail(_ creds: ClaudeOAuthCreds) async -> String? {
+        if let email = creds.email { return email }
+        let key = profileCacheKey(creds.accessToken)
+        if let cached = ProfileEmailCache.shared.email(for: key) { return cached }
+        guard let email = try? await fetchProfile(accessToken: creds.accessToken).email else { return nil }
+        ProfileEmailCache.shared.store(email, for: key)
+        return email
+    }
+
+    static func profileCacheKey(_ accessToken: String) -> String {
+        SHA256.hash(data: Data(accessToken.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func fetchProfile(accessToken: String) async throws -> ClaudeOAuthProfileResponse {
@@ -70,7 +83,7 @@ struct ClaudeProvider: UsageProvider {
             throw UsageAPIError.unauthorized
         }
         if http.statusCode == 429 {
-            throw UsageAPIError.rateLimited
+            throw UsageAPIError.rateLimited(http)
         }
         guard (200..<300).contains(http.statusCode) else {
             throw UsageAPIError.httpStatus(http.statusCode)
@@ -114,7 +127,7 @@ struct ClaudeProvider: UsageProvider {
             throw UsageAPIError.unauthorized
         }
         if http.statusCode == 429 {
-            throw UsageAPIError.rateLimited
+            throw UsageAPIError.rateLimited(http)
         }
         guard (200..<300).contains(http.statusCode) else {
             throw UsageAPIError.httpStatus(http.statusCode)
@@ -360,6 +373,28 @@ struct ClaudeProvider: UsageProvider {
         guard let amount else { return nil }
         let exponent = amount.exponent.map { Int($0.value.rounded()) } ?? 2
         return usdFromMinor(amount.amountMinor?.value, decimalPlaces: exponent)
+    }
+}
+
+/// 直近 1 件だけ覚える。
+final class ProfileEmailCache: @unchecked Sendable {
+    static let shared = ProfileEmailCache()
+
+    private let lock = NSLock()
+    private var key: String?
+    private var email: String?
+
+    func email(for key: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return self.key == key ? email : nil
+    }
+
+    func store(_ email: String, for key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.key = key
+        self.email = email
     }
 }
 

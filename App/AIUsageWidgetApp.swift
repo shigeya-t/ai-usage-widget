@@ -56,6 +56,10 @@ final class UsageModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var refreshAgain = false
     private var emptyConfigurationStreak = 0
+    private var rateLimitBackoff = RateLimitBackoff()
+    /// メニューの「更新」だけは 429 の待ちを無視する。ウィジェットや外部からの更新要求は待つ。
+    private var ignoreBackoffOnce = false
+    private var lastRefreshStartedAt: Date?
     private var widgetPokes: [DispatchWorkItem] = []
 
     init() {
@@ -132,7 +136,15 @@ final class UsageModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.refresh() }
+            Task { @MainActor in
+                guard let self else { return }
+                guard WidgetRefreshThrottle.shouldRefresh(
+                    lastStartedAt: self.lastRefreshStartedAt,
+                    now: Date(),
+                    userRequested: AppSettings.isKeychainRetryRequested
+                ) else { return }
+                await self.refresh()
+            }
         }
     }
 
@@ -203,6 +215,7 @@ final class UsageModel: ObservableObject {
 
     func refreshFromUser() async {
         AppSettings.requestKeychainRetry()
+        ignoreBackoffOnce = true
         await refresh()
     }
 
@@ -236,11 +249,20 @@ final class UsageModel: ObservableObject {
             ClaudeSession.retryKeychainAccess()
         }
 
+        lastRefreshStartedAt = Date()
+        let ignoreBackoff = ignoreBackoffOnce
+        ignoreBackoffOnce = false
         let providerIDs = await providersToRefresh()
         for providerID in providerIDs {
             guard let provider = UsageProviderRegistry.provider(id: providerID) else { continue }
+            if !ignoreBackoff, rateLimitBackoff.isCoolingDown(providerID, now: Date()) {
+                usageLogger.debug("skip \(providerID, privacy: .public): rate limit cooldown")
+                continue
+            }
             do {
                 let snap = try await provider.fetchSnapshot()
+                rateLimitBackoff.recordSuccess(providerID)
+                usageLogger.debug("refreshed \(providerID, privacy: .public) meters=\(snap.meters.count, privacy: .public)")
                 AppSettings.saveSnapshot(snap)
                 if providerID == selectedProviderID {
                     snapshot = snap
@@ -249,6 +271,11 @@ final class UsageModel: ObservableObject {
                 }
             } catch {
                 guard !Self.isCancellation(error) else { continue }
+                if case UsageAPIError.rateLimited(let retryAfter) = error {
+                    rateLimitBackoff.recordRateLimited(providerID, retryAfter: retryAfter, now: Date())
+                    let until = rateLimitBackoff.cooldownEnd(providerID)?.timeIntervalSinceNow ?? 0
+                    usageLogger.error("\(providerID, privacy: .public) rate limited; next try in \(Int(until), privacy: .public)s")
+                }
                 let message = Self.errorMessage(for: error, provider: provider, language: language)
                 usageLogger.error("refresh failed: \(String(describing: error), privacy: .public)")
                 if providerID == selectedProviderID {
