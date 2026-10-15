@@ -678,6 +678,55 @@ final class ClaudeSessionTests: XCTestCase {
         XCTAssertEqual(credential, .apiKey("sk-ant-admin01-test"))
     }
 
+    func testLaterFreshCredentialFileBeatsEarlierExpiredFile() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("claude-fresh-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let expired = dir.appendingPathComponent(".credentials.json")
+        let fresh = dir.appendingPathComponent("credentials.json")
+        try Data(#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-old","expiresAt":1}}"#.utf8).write(to: expired)
+        try Data(#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-new","expiresAt":9999999999000}}"#.utf8).write(to: fresh)
+        let credential = try await ClaudeSession.resolveCredential(
+            manualToken: "",
+            environment: [:],
+            credentialFiles: [expired, fresh],
+            includeKeychain: false
+        )
+        XCTAssertEqual(
+            credential,
+            .oauth(ClaudeOAuthCreds(accessToken: "sk-ant-oat-new", expiresAt: 9_999_999_999_000))
+        )
+    }
+
+    func testExpiredFileLosesToFreshKeychainToken() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        let expired = ClaudeOAuthCreds(accessToken: "sk-ant-oat01-old", expiresAt: 1_789_000_000_000)
+        let fresh = ClaudeOAuthCreds(accessToken: "sk-ant-oat01-new", expiresAt: 1_791_000_000_000)
+        XCTAssertEqual(
+            ClaudeSession.chooseLocalOAuth(file: expired, keychain: fresh, now: now)?.accessToken,
+            "sk-ant-oat01-new"
+        )
+    }
+
+    func testValidFileIsKeptAheadOfKeychain() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        let file = ClaudeOAuthCreds(accessToken: "sk-ant-oat01-file", expiresAt: 1_791_000_000_000)
+        let keychain = ClaudeOAuthCreds(accessToken: "sk-ant-oat01-keychain", expiresAt: 1_791_000_000_000)
+        XCTAssertEqual(
+            ClaudeSession.chooseLocalOAuth(file: file, keychain: keychain, now: now)?.accessToken,
+            "sk-ant-oat01-file"
+        )
+    }
+
+    func testExpiredFileRemainsWhenKeychainIsEmpty() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        let expired = ClaudeOAuthCreds(accessToken: "sk-ant-oat01-old", expiresAt: 1_789_000_000_000)
+        XCTAssertEqual(
+            ClaudeSession.chooseLocalOAuth(file: expired, keychain: nil, now: now)?.accessToken,
+            "sk-ant-oat01-old"
+        )
+    }
+
     func testExpiredLocalOAuthWithoutAPIKeyStaysExpired() async throws {
         let url = try writeTempJSON(#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-old","expiresAt":1}}"#)
         defer { try? FileManager.default.removeItem(at: url) }

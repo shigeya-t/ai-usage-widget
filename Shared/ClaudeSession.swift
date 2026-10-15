@@ -47,16 +47,25 @@ enum ClaudeSession {
     ) async throws -> ClaudeCredential {
         let env = environment ?? ProcessInfo.processInfo.environment
         let files = credentialFiles ?? credentialFileURLs()
+        let fileCreds = credentialsFromFiles(files)
         var local: ClaudeOAuthCreds?
         var localError: ClaudeSessionError?
-        if let creds = credentialsFromFiles(files) {
-            local = creds
+        // 有効なファイルがあるときだけ Keychain を見ない。期限切れのファイルで止めると、
+        // Claude Code がログインなしで書き換えた Keychain のトークンを拾えない。
+        if let fileCreds, !isCredsExpired(fileCreds) {
+            local = fileCreds
         } else if includeKeychain {
             do {
                 local = try await keychainOAuthCredentials()
             } catch let error as ClaudeSessionError {
                 localError = error
             }
+            if let chosen = chooseLocalOAuth(file: fileCreds, keychain: local) {
+                local = chosen
+                localError = nil
+            }
+        } else {
+            local = fileCreds
         }
         return try selectCredential(
             manualRaw: manualToken ?? loadManualToken(),
@@ -127,7 +136,24 @@ enum ClaudeSession {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// 手動更新のときだけ、キャッシュを捨てて読み直す。有効なキャッシュは消さない。
+    /// 有効なファイルを優先する。ファイルが期限切れなら、まだ有効な Keychain トークンを使う。
+    /// どちらも期限切れ、または Keychain が空ならファイルを残し、呼び出し側が tokenExpired にする。
+    static func chooseLocalOAuth(
+        file: ClaudeOAuthCreds?,
+        keychain: ClaudeOAuthCreds?,
+        now: Date = Date()
+    ) -> ClaudeOAuthCreds? {
+        if let file, !isCredsExpired(file, now: now) {
+            return file
+        }
+        if let keychain, !isCredsExpired(keychain, now: now) {
+            return keychain
+        }
+        return file ?? keychain
+    }
+
+    /// 手動更新で missing / denied を読み直す。期限切れのキャッシュは読むときに捨てる。
+    /// 有効なキャッシュは消さない。
     static func retryKeychainAccess(now: Date = Date()) {
         claudeCodeCacheLock.lock()
         defer { claudeCodeCacheLock.unlock() }
@@ -365,19 +391,23 @@ enum ClaudeSession {
         return try readCachedKeychainCreds(interactive: interactiveKeychain)
     }
 
+    /// 有効なトークンを先に返す。全部期限切れなら、最初に見つかったものを残す。
     private static func credentialsFromFiles(_ files: [URL]) -> ClaudeOAuthCreds? {
+        var expired: ClaudeOAuthCreds?
         for url in files {
             do {
-                if let creds = try readCredentialsFile(fileURL: url), !creds.accessToken.isEmpty {
-                    return creds
+                guard let creds = try readCredentialsFile(fileURL: url), !creds.accessToken.isEmpty else {
+                    continue
                 }
+                if !isCredsExpired(creds) { return creds }
+                if expired == nil { expired = creds }
             } catch ClaudeSessionError.apiKeyMode {
                 continue
             } catch {
                 continue
             }
         }
-        return nil
+        return expired
     }
 
     /// テスト用。キーチェーンは見ない。
@@ -448,14 +478,26 @@ enum ClaudeSession {
     }
 
     /// Claude Code の項目は ACL がこのアプリを含まない。`security` の待ちはメインスレッドの外で行う。
+    /// 期限切れのキャッシュはそのまま返すと、Keychain 上は更新済みでも tokenExpired になる。
+    /// Claude Code は再ログインせずに項目を書き換えるので、読むときに捨てて取り直す。
     private static func readClaudeCodeKeychainCreds() async throws -> ClaudeOAuthCreds? {
         if let cached = try readCachedKeychainCreds(interactive: true) {
-            return cached
+            if !isCredsExpired(cached) { return cached }
+            discardExpiredCredsCache()
         }
         guard beginKeychainPrompt() else {
             return try readCachedKeychainCreds(interactive: true)
         }
         return try storeKeychainPromptResult(await copyClaudeCodeKeychainCreds())
+    }
+
+    private static func discardExpiredCredsCache(now: Date = Date()) {
+        claudeCodeCacheLock.lock()
+        defer { claudeCodeCacheLock.unlock() }
+        guard case .creds(let creds) = claudeCodeCredsCache, isCredsExpired(creds, now: now) else {
+            return
+        }
+        claudeCodeCredsCache = .unset
     }
 
     private static func beginKeychainPrompt() -> Bool {
