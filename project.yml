@@ -74,6 +74,8 @@ targets:
         MARKETING_VERSION: "1.1.0"
         CURRENT_PROJECT_VERSION: "4"
         CODE_SIGN_STYLE: Automatic
+        # 公証（notarization）に必須。JIT などの例外 entitlement は要らない。
+        ENABLE_HARDENED_RUNTIME: YES
         SWIFT_VERSION: "5.0"
         APP_GROUP_ID: $(DEVELOPMENT_TEAM).jp.shigeya.AIUsageWidget
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -126,6 +128,7 @@ targets:
         MARKETING_VERSION: "1.1.0"
         CURRENT_PROJECT_VERSION: "4"
         CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
         SWIFT_VERSION: "5.0"
         APP_GROUP_ID: $(DEVELOPMENT_TEAM).jp.shigeya.AIUsageWidget
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

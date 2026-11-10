@@ -41,6 +41,18 @@ AppIntents は Team ID 付き署名が必要。無署名や adhoc だとウィ�
 Team ID は手元の「Apple Development」証明書の OU から引く。複数あるときは
 `DEVELOPMENT_TEAM=XXXXXXXXXX ./scripts/deploy-local.sh`。
 
+### 3. 配布用 DMG は `scripts/make-dmg.sh`
+
+```sh
+NOTARY_PROFILE=notary DEVELOPMENT_TEAM=<Developer ID を使える Team ID> ./scripts/make-dmg.sh
+```
+
+アーカイブ → Developer ID で書き出し（クラウド署名）→ `Applications` リンク付き DMG → 公証 → staple まで行い、
+`build/dist/` に出す。公証には hardened runtime が必須（`project.yml` の `ENABLE_HARDENED_RUNTIME`）。
+`notarytool submit --wait` は Invalid でも 0 で終わるので、スクリプトは status を見て止める。
+配布用チームは手元の開発用チームと違うことがあるため、`Config/Team.xcconfig` は終了時に元へ戻す。
+リリースノートは `docs/releases/v<version>.md`。
+
 ## テスト
 
 `AIUsageWidgetTests` はホストアプリを立てない単体テスト。通信せず、原則 UserDefaults /
