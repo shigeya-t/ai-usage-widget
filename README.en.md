@@ -75,7 +75,7 @@ each service's own login (OAuth); with just an API key you get a "how much did I
 | Item | What you need | Notes |
 | --- | --- | --- |
 | OS | macOS 14 or later | Required for the interactive widget buttons |
-| Build | Xcode 15 or later | There is no prebuilt release; you build it yourself |
+| Build | Xcode 15 or later | Only if you build it yourself. Not needed if you use the notarized DMG from [Releases](https://github.com/shigeya-t/ai-usage-widget/releases) |
 | Project generation | [XcodeGen](https://github.com/yonaskolb/XcodeGen) | `brew install xcodegen`. The `.xcodeproj` is not committed |
 | Signing | An Apple Development certificate | Created once you sign in to Xcode with an Apple ID. Team-signed builds are mandatory |
 | A login for the service you want to watch | Cursor.app / Claude Code / Codex CLI | Only for the services you actually use |

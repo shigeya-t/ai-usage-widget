@@ -76,7 +76,7 @@ API キーだけを持っている場合は「今月いくら使ったか」の�
 | 項目 | 必要なもの | 補足 |
 | --- | --- | --- |
 | OS | macOS 14 以降 | ウィジェットのボタン（インタラクティブ・ウィジェット）に必要です |
-| ビルド | Xcode 15 以降 | 配布ビルドはありません。自分でビルドして使います |
+| ビルド | Xcode 15 以降 | 自分でビルドする場合のみ。[Releases](https://github.com/shigeya-t/ai-usage-widget/releases) の DMG（公証済み）を使うなら不要です |
 | プロジェクト生成 | [XcodeGen](https://github.com/yonaskolb/XcodeGen) | `brew install xcodegen`。`.xcodeproj` はリポジトリに含めていません |
 | 署名 | Apple Development 証明書 | Xcode に Apple ID でサインインすれば作られます。Team ID 付きの署名が必須です |
 | 見たいサービスのログイン | Cursor.app / Claude Code / Codex CLI | 使いたいサービスの分だけで構いません |
