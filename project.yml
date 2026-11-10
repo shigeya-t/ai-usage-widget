@@ -72,7 +72,7 @@ targets:
         WRAPPER_NAME: AI使用量.app
         # 実行ファイル名は ASCII のまま。一覧用の .app 名だけ日本語にする。
         MARKETING_VERSION: "1.1.0"
-        CURRENT_PROJECT_VERSION: "4"
+        CURRENT_PROJECT_VERSION: "10"
         CODE_SIGN_STYLE: Automatic
         # 公証（notarization）に必須。JIT などの例外 entitlement は要らない。
         ENABLE_HARDENED_RUNTIME: YES
@@ -126,7 +126,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.shigeya.AIUsageWidget.Widget
         MARKETING_VERSION: "1.1.0"
-        CURRENT_PROJECT_VERSION: "4"
+        CURRENT_PROJECT_VERSION: "10"
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
         SWIFT_VERSION: "5.0"

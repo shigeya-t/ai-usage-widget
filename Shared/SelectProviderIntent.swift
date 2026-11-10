@@ -13,7 +13,10 @@ struct ProviderEntity: AppEntity {
     }
 }
 
-struct ProviderEntityQuery: EntityQuery {
+// EntityStringQuery にして、編集画面の選択肢を検索つきリストで出す。
+// 素の EntityQuery だとポップアップメニューになり、macOS 27.2.1 では選んだ値が
+// 編集画面に反映されず、閉じたあとウィジェットの右クリックも効かなくなる。
+struct ProviderEntityQuery: EntityStringQuery {
     func entities(for identifiers: [ProviderEntity.ID]) async throws -> [ProviderEntity] {
         identifiers.compactMap { id in
             guard let provider = UsageProviderRegistry.provider(id: id) else { return nil }
@@ -28,6 +31,13 @@ struct ProviderEntityQuery: EntityQuery {
         UsageProviderRegistry.all.map {
             ProviderEntity(id: $0.id, displayName: L10n.string($0.displayNameKey))
         }
+    }
+
+    func entities(matching string: String) async throws -> [ProviderEntity] {
+        let all = try await suggestedEntities()
+        let query = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return all }
+        return all.filter { $0.displayName.localizedCaseInsensitiveContains(query) }
     }
 
     func defaultResult() async -> ProviderEntity? {
