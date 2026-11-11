@@ -1,0 +1,47 @@
+{
+  "five_hour": {
+    "utilization": 12,
+    "resets_at": "2026-11-11T18:00:00.000Z"
+  },
+  "seven_day": {
+    "utilization": 30,
+    "resets_at": "2026-11-15T00:00:00.000Z"
+  },
+  "limits": [
+    {
+      "kind": "session",
+      "group": "session",
+      "percent": 12,
+      "resets_at": "2026-11-11T18:00:00.000Z",
+      "severity": "normal",
+      "is_active": true
+    },
+    {
+      "kind": "weekly_all",
+      "group": "weekly",
+      "percent": 30,
+      "resets_at": "2026-11-15T00:00:00.000Z",
+      "severity": "normal",
+      "is_active": false
+    },
+    "unexpected row",
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 8,
+      "resets_at": null,
+      "scope": { "surface": { "display_name": "Cowork" } },
+      "severity": "normal",
+      "is_active": false
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 64.5,
+      "resets_at": "2026-11-15T00:00:00.000Z",
+      "scope": { "model": { "display_name": "Fable" }, "surface": null },
+      "severity": "warning",
+      "is_active": false
+    }
+  ]
+}

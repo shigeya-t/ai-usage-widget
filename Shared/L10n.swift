@@ -85,6 +85,7 @@ enum L10n {
         "meter.sevenDay.subtitle": [.ja: "すべてのモデル", .en: "All models"],
         "meter.sevenDayOpus": [.ja: "週次 Opus", .en: "Weekly Opus"],
         "meter.sevenDaySonnet": [.ja: "週次 Sonnet", .en: "Weekly Sonnet"],
+        "meter.sevenDayFable": [.ja: "週次 Fable", .en: "Weekly Fable"],
         "meter.cloudSessionCredit": [.ja: "クラウドセッションクレジット", .en: "Cloud session credits"],
         "meter.cloudSessionCredit.subtitle": [
             .ja: "ワンタイムのセッション枠",
