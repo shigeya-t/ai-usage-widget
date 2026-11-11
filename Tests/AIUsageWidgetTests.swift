@@ -233,6 +233,7 @@ final class L10nTests: XCTestCase {
             "meter.grokBot",
             "meter.fiveHour",
             "meter.sevenDay",
+            "meter.sevenDayFable",
             "meter.cloudSessionCredit",
             "spend.cloudSessionCredit",
             "spend.cloudSessionCredit.compact",
@@ -381,6 +382,51 @@ final class ClaudeProviderMappingTests: XCTestCase {
         XCTAssertEqual(spend.usedUSD, 12.5, accuracy: 0.001)
         XCTAssertEqual(spend.limitUSD ?? -1, 50, accuracy: 0.001)
         XCTAssertFalse(spend.isUnlimited)
+    }
+
+    func testMapsFableWeeklyLimitFromLimitsRows() throws {
+        let usage = try decodeFixture("claude_oauth_usage_fable")
+        // 読めない行は捨て、残りは読む。
+        XCTAssertEqual(usage.limits?.rows.count, 4)
+
+        let snap = ClaudeProvider.mapUsage(
+            usage,
+            accountLabel: nil,
+            subscriptionType: "max",
+            rateLimitTier: "default_claude_max_20x",
+            fetchedAt: Date(timeIntervalSince1970: 0)
+        )
+        XCTAssertEqual(snap.meters.map(\.id), ["five-hour", "seven-day", "seven-day-fable"])
+        let fable = try XCTUnwrap(snap.meters.last)
+        XCTAssertEqual(fable.titleKey, "meter.sevenDayFable")
+        XCTAssertEqual(fable.percentUsed, 64.5, accuracy: 0.001)
+    }
+
+    func testFableWeeklyMeterMatchesModelRowsOnly() {
+        func row(kind: String, model: String?, percent: Double? = 10) -> ClaudeUsageLimit {
+            ClaudeUsageLimit(
+                kind: kind,
+                percent: percent.map { JSONNumber($0) },
+                resetsAt: nil,
+                scope: .init(model: model.map { .init(displayName: $0) })
+            )
+        }
+        XCTAssertNil(ClaudeProvider.fableWeeklyMeter(nil))
+        XCTAssertNil(ClaudeProvider.fableWeeklyMeter([row(kind: "weekly_all", model: "Fable")]))
+        XCTAssertNil(ClaudeProvider.fableWeeklyMeter([row(kind: "weekly_scoped", model: "Opus")]))
+        XCTAssertNil(ClaudeProvider.fableWeeklyMeter([row(kind: "weekly_scoped", model: nil)]))
+        XCTAssertNil(ClaudeProvider.fableWeeklyMeter([row(kind: "weekly_scoped", model: "Fable", percent: nil)]))
+        XCTAssertEqual(
+            ClaudeProvider.fableWeeklyMeter([row(kind: "weekly_scoped", model: "Fable 5.2", percent: 33)])?.percentUsed,
+            33
+        )
+    }
+
+    func testLimitsOfUnexpectedShapeDoesNotFailDecoding() throws {
+        let data = Data(#"{"five_hour":{"utilization":1},"limits":{"rows":"x"}}"#.utf8)
+        let usage = try JSONDecoder().decode(ClaudeOAuthUsageResponse.self, from: data)
+        XCTAssertEqual(usage.limits?.rows, [])
+        XCTAssertEqual(usage.fiveHour?.utilization?.value, 1)
     }
 
     func testMapsCurrentSpendObjectEvenWhenDisabled() throws {

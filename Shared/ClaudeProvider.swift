@@ -162,6 +162,9 @@ struct ClaudeProvider: UsageProvider {
         if let window = usage.sevenDaySonnet {
             meters.append(meter(id: "seven-day-sonnet", titleKey: "meter.sevenDaySonnet", subtitleKey: nil, window: window, accent: .secondary))
         }
+        if let fable = fableWeeklyMeter(usage.limits?.rows) {
+            meters.append(fable)
+        }
         var spends: [SpendMeter] = []
         if let credit = mapCloudSessionCredit(usage) {
             spends.append(credit)
@@ -202,6 +205,24 @@ struct ClaudeProvider: UsageProvider {
             subtitleKey: subtitleKey,
             percentUsed: window.utilization?.value ?? 0,
             accent: accent
+        )
+    }
+
+    /// Fable の週次枠は `seven_day_*` ではなく `limits[]` の行で来る
+    /// （`kind == "weekly_scoped"`、`scope.model.display_name` が "Fable" / "Fable 5" など）。
+    /// 種別は `kind` で見分け、モデルは表示名の先頭語で見分ける。
+    static func fableWeeklyMeter(_ rows: [ClaudeUsageLimit]?) -> UsageMeter? {
+        guard let row = rows?.first(where: { row in
+            guard row.kind == "weekly_scoped", row.percent != nil,
+                  let name = row.scope?.model?.displayName?.lowercased() else { return false }
+            return name == "fable" || name.hasPrefix("fable ")
+        }) else { return nil }
+        return UsageMeter(
+            id: "seven-day-fable",
+            titleKey: "meter.sevenDayFable",
+            subtitleKey: nil,
+            percentUsed: row.percent?.value ?? 0,
+            accent: .secondary
         )
     }
 
@@ -409,6 +430,7 @@ struct ClaudeOAuthUsageResponse: Codable, Equatable {
     var iguanaNecktie: ClaudeUsageWindow?
     var extraUsage: ClaudeExtraUsage?
     var spend: ClaudeOAuthSpend?
+    var limits: ClaudeUsageLimits?
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
@@ -419,6 +441,70 @@ struct ClaudeOAuthUsageResponse: Codable, Equatable {
         case iguanaNecktie = "iguana_necktie"
         case extraUsage = "extra_usage"
         case spend
+        case limits
+    }
+}
+
+/// `limits[]`。サーバーが行の形を変えても usage 全体のデコードを落とさないよう、
+/// 読めない行は捨て、配列でなければ空にする。
+struct ClaudeUsageLimits: Codable, Equatable {
+    var rows: [ClaudeUsageLimit]
+
+    init(rows: [ClaudeUsageLimit]) {
+        self.rows = rows
+    }
+
+    init(from decoder: Decoder) throws {
+        guard var container = try? decoder.unkeyedContainer() else {
+            rows = []
+            return
+        }
+        var rows: [ClaudeUsageLimit] = []
+        while !container.isAtEnd {
+            guard let element = try? container.decode(Element.self) else { break }
+            if let row = element.row { rows.append(row) }
+        }
+        self.rows = rows
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        for row in rows { try container.encode(row) }
+    }
+
+    /// 失敗しても投げない（unkeyed container の位置を進めるため）。
+    private struct Element: Decodable {
+        var row: ClaudeUsageLimit?
+
+        init(from decoder: Decoder) throws {
+            row = try? ClaudeUsageLimit(from: decoder)
+        }
+    }
+}
+
+struct ClaudeUsageLimit: Codable, Equatable {
+    var kind: String?
+    var percent: JSONNumber?
+    var resetsAt: JSONTimestamp?
+    var scope: Scope?
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case percent
+        case resetsAt = "resets_at"
+        case scope
+    }
+
+    struct Scope: Codable, Equatable {
+        var model: Model?
+    }
+
+    struct Model: Codable, Equatable {
+        var displayName: String?
+
+        enum CodingKeys: String, CodingKey {
+            case displayName = "display_name"
+        }
     }
 }
 
