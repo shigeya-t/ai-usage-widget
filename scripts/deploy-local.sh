@@ -3,13 +3,24 @@
 # 署名付きでビルドし、配置済みのアプリを入れ替えて起動し直す。
 # DerivedData の成果物はリポジトリの build/ にもコピーする。
 #
-#   ./scripts/deploy-local.sh                    # ~/Applications へ配置
+#   ./scripts/deploy-local.sh                    # 既存の配置先（無ければ ~/Applications）へ配置
 #   ./scripts/deploy-local.sh /Applications      # 配置先を指定
 #   DEVELOPMENT_TEAM=XXXXXXXXXX ./scripts/deploy-local.sh
+#
+# /Applications と ~/Applications の両方に置くと、再起動のたびに両方が Launch Services に
+# 登録し直され、ウィジェットが描画されなくなる。配置先でない方はゴミ箱へ移す。
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
-DEST="${1:-$HOME/Applications}"
+if [[ -n "${1:-}" ]]; then
+  DEST="$1"
+elif [[ -d "/Applications/$APP_NAME" ]]; then
+  # DMG から入れたものやログイン項目が指している方を置き換える
+  DEST="/Applications"
+else
+  DEST="$HOME/Applications"
+fi
+DEST="${DEST%/}"
 TARGET="$DEST/$APP_NAME"
 
 echo "==> ビルド"
@@ -37,6 +48,20 @@ echo "==> 配置: $TARGET"
 mkdir -p "$DEST"
 rm -rf "$TARGET"
 cp -R "$APP" "$DEST/"
+
+echo "==> 他の Applications にある同じアプリをゴミ箱へ移す"
+for folder in /Applications "$HOME/Applications"; do
+  for other in "$folder"/*.app; do
+    [[ -d "$other" && "$other" != "$TARGET" ]] || continue
+    id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$other/Contents/Info.plist" 2>/dev/null || true)
+    [[ "$id" == "$BUNDLE_ID" ]] || continue
+    trashed="$HOME/.Trash/$(basename "$other" .app) $(date +%Y%m%d-%H%M%S).app"
+    "$LSREGISTER" -u "$other" 2>/dev/null || true
+    mv "$other" "$trashed"
+    "$LSREGISTER" -u "$trashed" 2>/dev/null || true
+    echo "    $other → ゴミ箱"
+  done
+done
 
 echo "==> Launch Services / アイコンキャッシュを更新"
 # 消えたアーカイブ中間生成物やゴミ箱の同名アプリが残っていると、

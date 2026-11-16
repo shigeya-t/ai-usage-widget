@@ -51,6 +51,8 @@ final class UsageModel: ObservableObject {
     @Published private(set) var isPaused: Bool
     @Published private(set) var isRefreshing = false
     @Published private(set) var hasManualCookie = false
+    /// `/Applications` と `~/Applications` にある自分以外のコピー（表示用パス）。
+    @Published private(set) var duplicateInstallPaths: [String] = []
 
     private var timer: Timer?
     private var refreshTask: Task<Void, Never>?
@@ -76,6 +78,7 @@ final class UsageModel: ObservableObject {
         observeOpenDashboardRequestsFromWidget()
         observeSystemWake()
         openPendingDashboard()
+        duplicateInstallPaths = Self.findDuplicateInstalls()
         // ログイン項目は chronod がデスクトップウィジェットを戻すより先に起動する。
         // その時点の reloadTimelines は捨てられ、ウィジェットはプレースホルダのまま残る。
         scheduleWidgetPokes()
@@ -95,6 +98,31 @@ final class UsageModel: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
             return work
         }
+    }
+
+    private static func findDuplicateInstalls() -> [String] {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return [] }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let folders = DuplicateInstall.applicationFolders(home: home)
+        var candidates = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: bundleID)
+        // Launch Services にまだ載っていない同名のコピーも見る
+        let name = Bundle.main.bundleURL.lastPathComponent
+        for folder in folders {
+            let url = folder.appendingPathComponent(name, isDirectory: true)
+            if Bundle(url: url)?.bundleIdentifier == bundleID {
+                candidates.append(url)
+            }
+        }
+        let others = DuplicateInstall.otherCopies(
+            candidates: candidates,
+            running: Bundle.main.bundleURL,
+            folders: folders
+        )
+        let paths = others.map { DuplicateInstall.displayPath($0, home: home) }
+        if !paths.isEmpty {
+            usageLogger.error("同じ bundle ID のアプリが他にもあります: \(paths.joined(separator: ", "), privacy: .private)")
+        }
+        return paths
     }
 
     private func observeSystemWake() {
@@ -536,6 +564,21 @@ struct MenuContent: View {
             Label(L10n.string("menu.pausedHint", language: lang), systemImage: "pause.circle")
                 .font(.caption)
                 .foregroundStyle(.orange)
+        }
+
+        if !model.duplicateInstallPaths.isEmpty {
+            Label(
+                L10n.format(
+                    "menu.duplicateInstall",
+                    model.duplicateInstallPaths.joined(separator: "\n"),
+                    language: lang
+                ),
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(.caption)
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
         }
     }
 

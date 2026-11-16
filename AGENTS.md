@@ -84,6 +84,10 @@ App が App Group に書いたものを読むだけ。
 ## 開発中に踏まないこと
 
 - `.app` 名に濁点付き日本語を入れない（拡張が起動せず空枠になる）
+- `/Applications` と `~/Applications` の両方に置かない。再起動のたびに両方が LS に再登録され、
+  Notification Center が "Widget extension could not be looked up" で描画できずプレースホルダのまま残る
+  （`lsregister -u` しても再起動で戻る）。`deploy-local.sh` は既存の配置先を上書きし、もう一方はゴミ箱へ移す。
+  アプリもメニューで警告する（`DuplicateInstall`）
 - アプリ終了は bundle ID（`tell application id "jp.shigeya.AIUsageWidget"`）
 - `MenuBarExtra(.window)` は `NSApp.activate` しないと TextField が入力を受け取れない
 - Cookie / JWT をログに出さない
