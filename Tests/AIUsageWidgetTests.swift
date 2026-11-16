@@ -262,7 +262,8 @@ final class L10nTests: XCTestCase {
             "error.apiKeyMode.claude",
             "error.keychainDenied.claude",
             "error.apiKeyMode.chatgpt",
-            "widget.placeholder"
+            "widget.placeholder",
+            "menu.duplicateInstall"
         ]
         for key in keys {
             assertLocalized(key)
@@ -1454,6 +1455,48 @@ final class RateLimitBackoffTests: XCTestCase {
         XCTAssertFalse(key.contains("secret"))
         XCTAssertEqual(key.count, 64)
         XCTAssertEqual(key, ClaudeProvider.profileCacheKey("sk-ant-oat01-secret"))
+    }
+}
+
+final class DuplicateInstallTests: XCTestCase {
+    private let home = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
+    private var folders: [URL] { DuplicateInstall.applicationFolders(home: home) }
+
+    func testFindsCopyInOtherApplicationsFolder() {
+        let running = URL(fileURLWithPath: "/Applications/AI使用量.app")
+        let other = home.appendingPathComponent("Applications/AI使用量.app")
+        let result = DuplicateInstall.otherCopies(
+            candidates: [running, other, other],
+            running: running,
+            folders: folders
+        )
+        XCTAssertEqual(result.map(\.path), [other.path])
+        XCTAssertEqual(DuplicateInstall.displayPath(result[0], home: home), "~/Applications/AI使用量.app")
+    }
+
+    func testIgnoresBuildsOutsideApplicationsFolders() {
+        let running = URL(fileURLWithPath: "/Applications/AI使用量.app")
+        let result = DuplicateInstall.otherCopies(
+            candidates: [
+                running.appendingPathComponent("/"),
+                home.appendingPathComponent("Developer/ai-usage-widget/build/AI使用量.app"),
+                home.appendingPathComponent("Library/Developer/Xcode/DerivedData/x/Build/Products/Release/AI使用量.app"),
+                URL(fileURLWithPath: "/Volumes/AI使用量/AI使用量.app"),
+                URL(fileURLWithPath: "/ApplicationsOld/AI使用量.app"),
+            ],
+            running: running,
+            folders: folders
+        )
+        XCTAssertEqual(result, [])
+    }
+
+    func testDecomposedNameMatchesRunningCopy() {
+        let running = URL(fileURLWithPath: "/Applications/AI使用量.app")
+        let decomposed = URL(fileURLWithPath: "/Applications/" + "AI使用量.app".decomposedStringWithCanonicalMapping)
+        XCTAssertEqual(
+            DuplicateInstall.otherCopies(candidates: [decomposed], running: running, folders: folders),
+            []
+        )
     }
 }
 

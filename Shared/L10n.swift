@@ -234,6 +234,10 @@ enum L10n {
         "menu.saveCookie": [.ja: "保存 / 上書き", .en: "Save / Replace"],
         "menu.clearCookie": [.ja: "削除", .en: "Delete"],
         "menu.lastUpdated": [.ja: "最終更新: %@", .en: "Updated: %@"],
+        "menu.duplicateInstall": [
+            .ja: "同じアプリが別の場所にもあります。再起動後にウィジェットが描画されない原因になるため、使っていない方を削除してください:\n%@",
+            .en: "Another copy of this app is installed. It can keep widgets blank after a restart, so delete the copy you don't use:\n%@"
+        ],
         "menu.teamEmpty": [
             .ja: "Team ID が空です。ターミナルで ./scripts/sync-team.sh を実行してからビルドし直してください。",
             .en: "Team ID is empty. Run ./scripts/sync-team.sh and rebuild."
